@@ -13,6 +13,7 @@
     } while(0)
 
 __global__ void matmul_kernel(const float* A, const float* B, float* C, int n);
+__global__ void matmul_shared_kernel(const float* A, const float* B, float* C, int n);
 void init_matrix(float *matrix, int n);
 
 #endif // MATMUL_H
