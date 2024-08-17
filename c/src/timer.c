@@ -1,5 +1,6 @@
 #include <hip/hip_runtime.h>
 #include "timer.h"
+#include "matmul.h"
 
 void start_timer(hipEvent_t *start, hipEvent_t *stop) {
     CHECK(hipEventCreate(start));
