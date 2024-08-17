@@ -1,5 +1,5 @@
 #include "../include/check_utils.h"
-#include "../include/matmul_lib.h"
+#include "../include/matmul.h"
 #include <math.h>
 
 bool check_matrices(float C1[N][N], float C2[N][N], float tolerance) {

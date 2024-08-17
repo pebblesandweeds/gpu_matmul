@@ -3,6 +3,8 @@
 
 #include <hip/hip_runtime.h>
 
+#define N 16384
+
 #define CHECK(cmd) \
     do { \
         hipError_t error = cmd; \
