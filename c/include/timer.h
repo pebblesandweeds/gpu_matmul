@@ -1,6 +1,9 @@
 #ifndef TIMER_H
 #define TIMER_H
 
-float time_matmul(const float* d_A, const float* d_B, float* d_C, int N);
+#include <hip/hip_runtime.h>
+
+void start_timer(hipEvent_t *start, hipEvent_t *stop);
+float stop_timer(hipEvent_t start, hipEvent_t stop);
 
 #endif // TIMER_H

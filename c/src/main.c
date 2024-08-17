@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <hip/hip_runtime.h>
 #include "matmul.h"
+#include "timer.h"
 
 #define N 16384  // Adjust this based on your matrix size
 
@@ -59,17 +60,12 @@ int main(int argc, char* argv[]) {
 
     // Launch kernel
     hipEvent_t start, stop;
-    CHECK(hipEventCreate(&start));
-    CHECK(hipEventCreate(&stop));
-    CHECK(hipEventRecord(start, NULL));
+    start_timer(&start, &stop);
 
     hipLaunchKernelGGL(matmul_kernel, gridDim, blockDim, 0, NULL, d_A, d_B, d_C, N);
     CHECK(hipGetLastError());
 
-    CHECK(hipEventRecord(stop, NULL));
-    CHECK(hipEventSynchronize(stop));
-    float milliseconds = 0;
-    CHECK(hipEventElapsedTime(&milliseconds, start, stop));
+    float milliseconds = stop_timer(start, stop);
 
     // Copy result back to host
     CHECK(hipMemcpy(h_C, d_C, size, hipMemcpyDeviceToHost));
