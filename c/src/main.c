@@ -3,6 +3,7 @@
 #include <hip/hip_runtime.h>
 #include "matmul.h"
 #include "timer.h"
+#include "check_utils.h"
 
 #define N 16384
 #define BLOCK_SIZE 16
