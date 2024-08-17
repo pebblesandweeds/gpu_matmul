@@ -12,7 +12,7 @@
         } \
     } while(0)
 
+__global__ void matmul_kernel(const float* A, const float* B, float* C, int n);
 void init_matrix(float *matrix, int n);
-void naive_matmul(const float* d_A, const float* d_B, float* d_C, int N);
 
 #endif // MATMUL_H

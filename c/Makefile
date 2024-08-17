@@ -1,5 +1,5 @@
 CC = hipcc
-CFLAGS = -I./include
+CFLAGS = -I./include -D__HIP_PLATFORM_AMD__=1 -x hip
 LDFLAGS = 
 
 SRC_DIR = src

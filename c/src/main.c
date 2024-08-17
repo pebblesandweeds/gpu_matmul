@@ -2,7 +2,6 @@
 #include <stdlib.h>
 #include <hip/hip_runtime.h>
 #include "matmul.h"
-#include "timer.h"
 
 #define N 16384  // Adjust this based on your matrix size
 
@@ -22,16 +21,13 @@ int main(int argc, char* argv[]) {
     if (argc > 1) {
         deviceId = atoi(argv[1]);
     }
-
     int deviceCount;
     CHECK(hipGetDeviceCount(&deviceCount));
     printf("Number of available GPUs: %d\n", deviceCount);
-
     if (deviceId < 0 || deviceId >= deviceCount) {
         fprintf(stderr, "Invalid device ID. Please specify a device ID between 0 and %d.\n", deviceCount - 1);
         return 1;
     }
-
     CHECK(hipSetDevice(deviceId));
     print_gpu_info(deviceId);
 
@@ -57,8 +53,23 @@ int main(int argc, char* argv[]) {
     CHECK(hipMemcpy(d_A, h_A, size, hipMemcpyHostToDevice));
     CHECK(hipMemcpy(d_B, h_B, size, hipMemcpyHostToDevice));
 
-    // Perform matrix multiplication
-    float milliseconds = time_matmul(d_A, d_B, d_C, N);
+    // Set up grid and block dimensions
+    dim3 blockDim = {16, 16, 1};
+    dim3 gridDim = {(N + blockDim.x - 1) / blockDim.x, (N + blockDim.y - 1) / blockDim.y, 1};
+
+    // Launch kernel
+    hipEvent_t start, stop;
+    CHECK(hipEventCreate(&start));
+    CHECK(hipEventCreate(&stop));
+    CHECK(hipEventRecord(start, NULL));
+
+    hipLaunchKernelGGL(matmul_kernel, gridDim, blockDim, 0, NULL, d_A, d_B, d_C, N);
+    CHECK(hipGetLastError());
+
+    CHECK(hipEventRecord(stop, NULL));
+    CHECK(hipEventSynchronize(stop));
+    float milliseconds = 0;
+    CHECK(hipEventElapsedTime(&milliseconds, start, stop));
 
     // Copy result back to host
     CHECK(hipMemcpy(h_C, d_C, size, hipMemcpyDeviceToHost));
