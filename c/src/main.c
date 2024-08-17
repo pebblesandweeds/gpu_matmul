@@ -4,7 +4,7 @@
 #include "matmul.h"
 #include "timer.h"
 
-#define N 16384  // Adjust this based on your matrix size
+#define N 16384  
 
 void print_gpu_info(int deviceId) {
     hipDeviceProp_t deviceProp;
@@ -18,7 +18,7 @@ void print_gpu_info(int deviceId) {
 }
 
 int main(int argc, char* argv[]) {
-    int deviceId = 2; // Default to first GPU
+    int deviceId = 0; // Default to first GPU
     if (argc > 1) {
         deviceId = atoi(argv[1]);
     }
@@ -36,29 +36,23 @@ int main(int argc, char* argv[]) {
     float *d_A, *d_B, *d_C;
     size_t size = N * N * sizeof(float);
 
-    // Allocate host memory
     h_A = (float*)malloc(size);
     h_B = (float*)malloc(size);
     h_C = (float*)malloc(size);
 
-    // Initialize matrices
     init_matrix(h_A, N);
     init_matrix(h_B, N);
 
-    // Allocate device memory
     CHECK(hipMalloc((void**)&d_A, size));
     CHECK(hipMalloc((void**)&d_B, size));
     CHECK(hipMalloc((void**)&d_C, size));
 
-    // Copy data to device
     CHECK(hipMemcpy(d_A, h_A, size, hipMemcpyHostToDevice));
     CHECK(hipMemcpy(d_B, h_B, size, hipMemcpyHostToDevice));
 
-    // Set up grid and block dimensions
     dim3 blockDim = {16, 16, 1};
     dim3 gridDim = {(N + blockDim.x - 1) / blockDim.x, (N + blockDim.y - 1) / blockDim.y, 1};
 
-    // Launch kernel
     hipEvent_t start, stop;
     start_timer(&start, &stop);
 
@@ -67,17 +61,14 @@ int main(int argc, char* argv[]) {
 
     float milliseconds = stop_timer(start, stop);
 
-    // Copy result back to host
     CHECK(hipMemcpy(h_C, d_C, size, hipMemcpyDeviceToHost));
 
-    // Print performance metrics
     double seconds = milliseconds / 1000.0;
     long long flop = 2LL * N * N * N;
     double gflops = (flop / seconds) / 1e9;
     printf("GPU Matmul time taken: %.6f seconds\n", seconds);
     printf("GPU Matmul: %.2f GFLOPS\n", gflops);
 
-    // Free memory
     free(h_A);
     free(h_B);
     free(h_C);
