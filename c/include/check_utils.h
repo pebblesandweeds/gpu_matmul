@@ -4,6 +4,6 @@
 #include "matmul.h"
 #include <stdbool.h>
 
-bool check_matrices(float C1[N][N], float C2[N][N], float tolerance);
+bool check_matrices(const float* C1, const float* C2, int N, float tolerance);
 
 #endif

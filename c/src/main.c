@@ -73,6 +73,15 @@ int main(int argc, char* argv[]) {
     float milliseconds_shared = stop_timer(start, stop);
     CHECK(hipMemcpy(h_C_shared, d_C_shared, size, hipMemcpyDeviceToHost));
 
+    float tolerance = 1e-5;  // You may need to adjust this based on your precision requirements
+    bool matrices_match = check_matrices(h_C_naive, h_C_shared, N, tolerance);
+
+    if (matrices_match) {
+        printf("The results from naive and shared memory implementations match within the tolerance.\n");
+    } else {
+        printf("The results from naive and shared memory implementations do not match within the tolerance.\n");
+    }
+
     double seconds_naive = milliseconds_naive / 1000.0;
     double seconds_shared = milliseconds_shared / 1000.0;
     long long flop = 2LL * N * N * N;
