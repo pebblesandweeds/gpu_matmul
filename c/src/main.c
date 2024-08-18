@@ -75,11 +75,11 @@ int main(int argc, char* argv[]) {
 
     // Verify naive implementation
     printf("\nVerifying naive implementation:\n");
-    bool naive_correct = partial_verify(h_A, h_B, h_C_naive, N, 1e-5);
+    bool naive_correct = partial_verify(h_A, h_B, h_C_naive, N * N, 1e-5);
 
     // Verify shared memory implementation
     printf("\nVerifying shared memory implementation:\n");
-    bool shared_correct = partial_verify(h_A, h_B, h_C_shared, N, 1e-5);
+    bool shared_correct = partial_verify(h_A, h_B, h_C_shared, N * N, 1e-5);
 
     // Compare naive and shared memory implementations
     double trace_naive = compute_trace_of_product(h_A, h_B, N);

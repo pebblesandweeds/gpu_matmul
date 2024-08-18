@@ -5,21 +5,21 @@
 
 #define SAMPLE_SIZE 1000
 
-bool partial_verify(const float* A, const float* B, const float* C_gpu, int N, float tolerance) {
+bool partial_verify(const float* A, const float* B, const float* C_gpu, int size, float tolerance) {
     int mismatches = 0;
     
     srand(12345);  // Seed for reproducibility
 
     for (int s = 0; s < SAMPLE_SIZE; s++) {
-        int i = rand() % N;
-        int j = rand() % N;
+        int i = rand() % size;
+        int j = rand() % size;
         
         float expected = 0.0f;
-        for (int k = 0; k < N; k++) {
-            expected += A[i * N + k] * B[k * N + j];
+        for (int k = 0; k < size; k++) {
+            expected += A[i * N + k] * B[k * size + j];
         }
         
-        float actual = C_gpu[i * N + j];
+        float actual = C_gpu[i * size + j];
         
         if (fabsf(actual - expected) > tolerance * fabsf(expected)) {
             mismatches++;
@@ -37,21 +37,21 @@ bool partial_verify(const float* A, const float* B, const float* C_gpu, int N, f
     return mismatch_rate < 0.01;  // Consider it correct if less than 1% mismatch
 }
 
-double compute_trace_of_product(const float* A, const float* B, int N) {
+double compute_trace_of_product(const float* A, const float* B, int size) {
     double trace = 0.0;
-    for (int i = 0; i < N; i++) {
+    for (int i = 0; i < size; i++) {
         double sum = 0.0;
-        for (int k = 0; k < N; k++) {
-            sum += (double)A[i * N + k] * (double)B[k * N + i];
+        for (int k = 0; k < size; k++) {
+            sum += (double)A[i * size + k] * (double)B[k * size + i];
         }
         trace += sum;
     }
     return trace;
 }
 
-double frobenius_norm(const float* M, int N) {
+double frobenius_norm(const float* M, int size) {
     double sum = 0.0;
-    for (int i = 0; i < N * N; i++) {
+    for (int i = 0; i < size * size; i++) {
         sum += (double)M[i] * (double)M[i];
     }
     return sqrt(sum);
