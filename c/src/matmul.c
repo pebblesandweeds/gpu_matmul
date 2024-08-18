@@ -16,30 +16,33 @@ __global__ void matmul_kernel(const float* A, const float* B, float* C, int n) {
 }
 
 __global__ void matmul_shared_kernel(const float* A, const float* B, float* C, int n) {
-    __shared__ float tile_A[BLOCK_SIZE];
-    __shared__ float tile_B[BLOCK_SIZE];
+    __shared__ float tile_A[BLOCK_SIZE][BLOCK_SIZE];
+    __shared__ float tile_B[BLOCK_SIZE][BLOCK_SIZE];
 
     int row = hipBlockIdx_y * BLOCK_SIZE + hipThreadIdx_y;
     int col = hipBlockIdx_x * BLOCK_SIZE + hipThreadIdx_x;
     float sum = 0.0f;
 
     for (int t = 0; t < n; t += BLOCK_SIZE) {
+        // Load tile of A
         if (row < n && t + hipThreadIdx_x < n) {
-            tile_A[hipThreadIdx_x] = A[row * n + t + hipThreadIdx_x];
+            tile_A[hipThreadIdx_y][hipThreadIdx_x] = A[row * n + t + hipThreadIdx_x];
         } else {
-            tile_A[hipThreadIdx_x] = 0.0f;
+            tile_A[hipThreadIdx_y][hipThreadIdx_x] = 0.0f;
         }
 
-        if (col < n && t + hipThreadIdx_y < n) {
-            tile_B[hipThreadIdx_y] = B[(t + hipThreadIdx_y) * n + col];
+        // Load tile of B
+        if (t + hipThreadIdx_y < n && col < n) {
+            tile_B[hipThreadIdx_y][hipThreadIdx_x] = B[(t + hipThreadIdx_y) * n + col];
         } else {
-            tile_B[hipThreadIdx_y] = 0.0f;
+            tile_B[hipThreadIdx_y][hipThreadIdx_x] = 0.0f;
         }
 
         __syncthreads();
 
+        // Compute partial dot product
         for (int k = 0; k < BLOCK_SIZE; k++) {
-            sum += tile_A[k] * tile_B[k];
+            sum += tile_A[hipThreadIdx_y][k] * tile_B[k][hipThreadIdx_x];
         }
 
         __syncthreads();
