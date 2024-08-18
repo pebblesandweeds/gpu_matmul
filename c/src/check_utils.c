@@ -37,23 +37,3 @@ bool partial_verify(const float* A, const float* B, const float* C_gpu, int size
 
     return mismatch_rate < 0.01;  // Consider it correct if less than 1% mismatch
 }
-
-double compute_trace_of_product(const float* A, const float* B, int size) {
-    double trace = 0.0;
-    for (int i = 0; i < size; i++) {
-        double sum = 0.0;
-        for (int k = 0; k < size; k++) {
-            sum += (double)A[i * size + k] * (double)B[k * size + i];
-        }
-        trace += sum;
-    }
-    return trace;
-}
-
-double frobenius_norm(const float* M, int size) {
-    double sum = 0.0;
-    for (int i = 0; i < size * size; i++) {
-        sum += (double)M[i] * (double)M[i];
-    }
-    return sqrt(sum);
-}
