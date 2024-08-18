@@ -73,13 +73,32 @@ int main(int argc, char* argv[]) {
     float milliseconds_shared = stop_timer(start, stop);
     CHECK(hipMemcpy(h_C_shared, d_C_shared, size, hipMemcpyDeviceToHost));
 
-    float tolerance = 1e-5;  // You may need to adjust this based on your precision requirements
-    bool matrices_match = check_matrices(h_C_naive, h_C_shared, N, tolerance);
+    // Verify naive implementation
+    printf("\nVerifying naive implementation:\n");
+    bool naive_correct = partial_verify(h_A, h_B, h_C_naive, N, 1e-5);
 
-    if (matrices_match) {
-        printf("The results from naive and shared memory implementations match within the tolerance.\n");
+    // Verify shared memory implementation
+    printf("\nVerifying shared memory implementation:\n");
+    bool shared_correct = partial_verify(h_A, h_B, h_C_shared, N, 1e-5);
+
+    // Compare naive and shared memory implementations
+    double trace_naive = compute_trace_of_product(h_A, h_B, N);
+    double trace_shared = 0.0;
+    for (int i = 0; i < N; i++) {
+        trace_shared += h_C_shared[i * N + i];
+    }
+    double relative_trace_error = fabs(trace_shared - trace_naive) / fabs(trace_naive);
+    printf("Relative trace error between implementations: %e\n", relative_trace_error);
+
+    double norm_naive = frobenius_norm(h_C_naive, N);
+    double norm_shared = frobenius_norm(h_C_shared, N);
+    double relative_norm_error = fabs(norm_shared - norm_naive) / norm_naive;
+    printf("Relative Frobenius norm error between implementations: %e\n", relative_norm_error);
+
+    if (naive_correct && shared_correct && relative_trace_error < 1e-5 && relative_norm_error < 1e-5) {
+        printf("Both implementations appear to be correct and match each other.\n");
     } else {
-        printf("The results from naive and shared memory implementations do not match within the tolerance.\n");
+        printf("There may be issues with one or both implementations.\n");
     }
 
     double seconds_naive = milliseconds_naive / 1000.0;

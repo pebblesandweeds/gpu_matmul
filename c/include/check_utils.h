@@ -1,9 +1,10 @@
 #ifndef CHECK_UTILS_H
 #define CHECK_UTILS_H
 
-#include "matmul.h"
 #include <stdbool.h>
 
-bool check_matrices(const float* C1, const float* C2, int N, float tolerance);
+bool partial_verify(const float* A, const float* B, const float* C_gpu, int N, float tolerance);
+double compute_trace_of_product(const float* A, const float* B, int N);
+double frobenius_norm(const float* M, int N);
 
 #endif
