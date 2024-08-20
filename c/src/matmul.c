@@ -1,8 +1,6 @@
 #include <hip/hip_runtime.h>
 #include "matmul.h"
 
-#define BLOCK_SIZE 16
-
 __global__ void matmul_kernel(const float* A, const float* B, float* C, int n) {
     int row = hipBlockIdx_y * hipBlockDim_y + hipThreadIdx_y;
     int col = hipBlockIdx_x * hipBlockDim_x + hipThreadIdx_x;
@@ -26,9 +24,9 @@ __global__ void matmul_shared_kernel(const float* A, const float* B, float* C, i
     for (int t = 0; t < n; t += BLOCK_SIZE) {
         // Load tile of A
         if (row < n && t + hipThreadIdx_x < n) {
-            tile_A[hipThreadIdx_y][hipThreadIdx_x] = A[row * n + t + hipThreadIdx_x];
+                tile_A[hipThreadIdx_y][hipThreadIdx_x] = A[row * n + t + hipThreadIdx_x];
         } else {
-            tile_A[hipThreadIdx_y][hipThreadIdx_x] = 0.0f;
+                tile_A[hipThreadIdx_y][hipThreadIdx_x] = 0.0f;
         }
 
         // Load tile of B

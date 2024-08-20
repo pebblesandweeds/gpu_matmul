@@ -4,6 +4,7 @@
 #include <hip/hip_runtime.h>
 
 #define N 16384
+#define BLOCK_SIZE 32
 
 #define CHECK(cmd) \
     do { \

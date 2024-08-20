@@ -5,9 +5,6 @@
 #include "timer.h"
 #include "check_utils.h"
 
-#define N 16384
-#define BLOCK_SIZE 16
-
 void print_gpu_info(int deviceId) {
     hipDeviceProp_t deviceProp;
     CHECK(hipGetDeviceProperties(&deviceProp, deviceId));
@@ -54,12 +51,11 @@ int main(int argc, char* argv[]) {
     CHECK(hipMemcpy(d_A, h_A, size, hipMemcpyHostToDevice));
     CHECK(hipMemcpy(d_B, h_B, size, hipMemcpyHostToDevice));
 
-    dim3 blockDim = {BLOCK_SIZE, BLOCK_SIZE, 1};
-    dim3 gridDim = {(N + blockDim.x - 1) / blockDim.x, (N + blockDim.y - 1) / blockDim.y, 1};
-
     hipEvent_t start, stop;
 
     // Naive matrix multiplication
+    dim3 blockDim = {BLOCK_SIZE, BLOCK_SIZE, 1};
+    dim3 gridDim = {(N + blockDim.x - 1) / blockDim.x, (N + blockDim.y - 1) / blockDim.y, 1};
     start_timer(&start, &stop);
     hipLaunchKernelGGL(matmul_kernel, gridDim, blockDim, 0, NULL, d_A, d_B, d_C_naive, N);
     CHECK(hipGetLastError());
@@ -67,8 +63,10 @@ int main(int argc, char* argv[]) {
     CHECK(hipMemcpy(h_C_naive, d_C_naive, size, hipMemcpyDeviceToHost));
 
     // Shared memory matrix multiplication
+    dim3 sharedblockDim = {BLOCK_SIZE, BLOCK_SIZE, 1};
+    dim3 sharegridDim = {(N + BLOCK_SIZE - 1) / BLOCK_SIZE, (N + BLOCK_SIZE - 1) / BLOCK_SIZE, 1};
     start_timer(&start, &stop);
-    hipLaunchKernelGGL(matmul_shared_kernel, gridDim, blockDim, 0, NULL, d_A, d_B, d_C_shared, N);
+    hipLaunchKernelGGL(matmul_shared_kernel, sharedgridDim, sharedblockDim, 0, NULL, d_A, d_B, d_C_shared, N);
     CHECK(hipGetLastError());
     float milliseconds_shared = stop_timer(start, stop);
     CHECK(hipMemcpy(h_C_shared, d_C_shared, size, hipMemcpyDeviceToHost));
