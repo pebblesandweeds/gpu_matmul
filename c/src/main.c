@@ -64,7 +64,7 @@ int main(int argc, char* argv[]) {
 
     // Shared memory matrix multiplication
     dim3 sharedblockDim = {BLOCK_SIZE, BLOCK_SIZE, 1};
-    dim3 sharegridDim = {(N + BLOCK_SIZE - 1) / BLOCK_SIZE, (N + BLOCK_SIZE - 1) / BLOCK_SIZE, 1};
+    dim3 sharedgridDim = {(N + BLOCK_SIZE - 1) / BLOCK_SIZE, (N + BLOCK_SIZE - 1) / BLOCK_SIZE, 1};
     start_timer(&start, &stop);
     hipLaunchKernelGGL(matmul_shared_kernel, sharedgridDim, sharedblockDim, 0, NULL, d_A, d_B, d_C_shared, N);
     CHECK(hipGetLastError());
