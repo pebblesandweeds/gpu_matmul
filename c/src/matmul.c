@@ -14,42 +14,42 @@ __global__ void matmul_kernel(const float* A, const float* B, float* C, int n) {
 }
 
 __global__ void matmul_shared_kernel(const float* A, const float* B, float* C, int n) {
-    __shared__ float As[BLOCK_SIZE * BLOCK_SIZE];
-    __shared__ float Bs[BLOCK_SIZE * BLOCK_SIZE * TILE_SIZE];
+    __shared__ float shared_a[BLOCK_SIZE * BLOCK_SIZE];
+    __shared__ float shared_b[BLOCK_SIZE * BLOCK_SIZE * TILE_SIZE];
 
-    const uint cRow = hipBlockIdx_y;
-    const uint cCol = hipBlockIdx_x;
-    const int threadCol = hipThreadIdx_x % BLOCK_SIZE;
-    const int threadRow = hipThreadIdx_x / BLOCK_SIZE;
+    const int block_row = hipBlockIdx_y;
+    const int block_col = hipBlockIdx_x;
+    const int thread_col = hipThreadIdx_x % BLOCK_SIZE;
+    const int thread_row = hipThreadIdx_x / BLOCK_SIZE;
 
-    A += cRow * BLOCK_SIZE * n;
-    B += cCol * BLOCK_SIZE * TILE_SIZE;
-    C += cRow * BLOCK_SIZE * n + cCol * BLOCK_SIZE * TILE_SIZE;
+    A += block_row * BLOCK_SIZE * n;
+    B += block_col * BLOCK_SIZE * TILE_SIZE;
+    C += block_row * BLOCK_SIZE * n + block_col * BLOCK_SIZE * TILE_SIZE;
 
-    float threadResults[TILE_SIZE] = {0.0f};
+    float thread_results[TILE_SIZE] = {0.0f};
 
     for (int t = 0; t < n; t += BLOCK_SIZE) {
         // Load A into shared memory
-        if (cRow * BLOCK_SIZE + threadRow < n && t + threadCol < n)
-            As[threadRow * BLOCK_SIZE + threadCol] = A[threadRow * n + threadCol];
+        if (block_row * BLOCK_SIZE + thread_row < n && t + thread_col < n)
+            shared_a[thread_row * BLOCK_SIZE + thread_col] = A[thread_row * n + thread_col];
         else
-            As[threadRow * BLOCK_SIZE + threadCol] = 0.0f;
+            shared_a[thread_row * BLOCK_SIZE + thread_col] = 0.0f;
 
         // Load B into shared memory
         for (int i = 0; i < TILE_SIZE; ++i) {
-            if (t + threadRow < n && cCol * BLOCK_SIZE * TILE_SIZE + threadCol + i * BLOCK_SIZE < n)
-                Bs[threadRow * BLOCK_SIZE * TILE_SIZE + threadCol + i * BLOCK_SIZE] =
-                    B[threadRow * n + threadCol + i * BLOCK_SIZE];
+            if (t + thread_row < n && block_col * BLOCK_SIZE * TILE_SIZE + thread_col + i * BLOCK_SIZE < n)
+                shared_b[thread_row * BLOCK_SIZE * TILE_SIZE + thread_col + i * BLOCK_SIZE] =
+                    B[thread_row * n + thread_col + i * BLOCK_SIZE];
             else
-                Bs[threadRow * BLOCK_SIZE * TILE_SIZE + threadCol + i * BLOCK_SIZE] = 0.0f;
+                shared_b[thread_row * BLOCK_SIZE * TILE_SIZE + thread_col + i * BLOCK_SIZE] = 0.0f;
         }
 
         __syncthreads();
 
         for (int k = 0; k < BLOCK_SIZE; ++k) {
-            float tmpA = As[threadRow * BLOCK_SIZE + k];
+            float tmpA = shared_a[thread_row * BLOCK_SIZE + k];
             for (int i = 0; i < TILE_SIZE; ++i) {
-                threadResults[i] += tmpA * Bs[k * BLOCK_SIZE * TILE_SIZE + threadCol + i * BLOCK_SIZE];
+                thread_results[i] += tmpA * shared_b[k * BLOCK_SIZE * TILE_SIZE + thread_col + i * BLOCK_SIZE];
             }
         }
 
@@ -61,10 +61,10 @@ __global__ void matmul_shared_kernel(const float* A, const float* B, float* C, i
 
     // Write results to global memory
     for (int i = 0; i < TILE_SIZE; ++i) {
-        int row = cRow * BLOCK_SIZE + threadRow;
-        int col = cCol * BLOCK_SIZE * TILE_SIZE + threadCol + i * BLOCK_SIZE;
+        int row = block_row * BLOCK_SIZE + thread_row;
+        int col = block_col * BLOCK_SIZE * TILE_SIZE + thread_col + i * BLOCK_SIZE;
         if (row < n && col < n) {
-            C[threadRow * n + threadCol + i * BLOCK_SIZE] = threadResults[i];
+            C[thread_row * n + thread_col + i * BLOCK_SIZE] = thread_results[i];
         }
     }
 }
