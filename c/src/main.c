@@ -14,6 +14,13 @@ void print_gpu_info(int deviceId) {
     printf("  Clock rate: %.2f GHz\n", deviceProp.clockRate * 1e-6f);
     printf("  Number of compute units: %d\n", deviceProp.multiProcessorCount);
     printf("  Max threads per block: %d\n", deviceProp.maxThreadsPerBlock);
+    printf("  Max threads per multiprocessor: %d\n", deviceProp.maxThreadsPerMultiProcessor);
+    printf("  Warp size: %d\n", deviceProp.warpSize);
+    printf("  Max registers per block: %d\n", deviceProp.regsPerBlock);
+    printf("  Max registers per multiprocessor: %d\n", deviceProp.regsPerMultiprocessor);
+    printf("  Max shared memory per block: %zu KB\n", deviceProp.sharedMemPerBlock / 1024);
+    printf("  Shared memory per multiprocessor: %zu B\n", deviceProp.maxSharedMemoryPerMultiProcessor);
+    printf("  Max warps per multiprocessor: %d\n", deviceProp.maxThreadsPerMultiProcessor / deviceProp.warpSize);
 }
 
 int main(int argc, char* argv[]) {
