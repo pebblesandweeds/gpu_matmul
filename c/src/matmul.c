@@ -13,7 +13,43 @@ __global__ void matmul_kernel(const float* A, const float* B, float* C, int n) {
     }
 }
 
-__global__ void matmul_shared_kernel(const float* A, const float* B, float* C, int n) {
+__global__ void matmul_shared_kernel(const float *A, const float *B, float *C, int n) {
+    int row = hipBlockIdx_y * BLOCK_SIZE + hipThreadIdx_y;
+    int col = hipBlockIdx_x * BLOCK_SIZE + hipThreadIdx_x;
+
+    __shared__ float s_a[BLOCK_SIZE * BLOCK_SIZE];
+    __shared__ float s_b[BLOCK_SIZE * BLOCK_SIZE];
+
+    float tmp = 0.0f;
+
+    // Sweep tile across matrix
+    for (int i = 0; i < n; i += BLOCK_SIZE) {
+        // Load elements for this tile
+        if (row < n && i + hipThreadIdx_x < n)
+            s_a[hipThreadIdx_y * BLOCK_SIZE + hipThreadIdx_x] = A[row * n + i + hipThreadIdx_x];
+        else
+            s_a[hipThreadIdx_y * BLOCK_SIZE + hipThreadIdx_x] = 0.0f;
+
+        if (i + hipThreadIdx_y < n && col < n)
+            s_b[hipThreadIdx_y * BLOCK_SIZE + hipThreadIdx_x] = B[(i + hipThreadIdx_y) * n + col];
+        else
+            s_b[hipThreadIdx_y * BLOCK_SIZE + hipThreadIdx_x] = 0.0f;
+
+        __syncthreads();
+
+        for (int j = 0; j < BLOCK_SIZE; j++) {
+            tmp += s_a[hipThreadIdx_y * BLOCK_SIZE + j] * s_b[j * BLOCK_SIZE + hipThreadIdx_x];
+        }
+
+        __syncthreads();
+    }
+
+    // Write back results
+    if (row < n && col < n)
+        C[row * n + col] = tmp;
+}
+
+__global__ void matmul_complex_kernel(const float* A, const float* B, float* C, int n) {
     __shared__ float shared_a[BLOCK_SIZE * BLOCK_SIZE];
     __shared__ float shared_b[BLOCK_SIZE * BLOCK_SIZE * TILE_SIZE];
 
