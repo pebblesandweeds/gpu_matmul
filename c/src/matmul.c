@@ -16,39 +16,44 @@ __global__ void matmul_kernel(const float* A, const float* B, float* C, int n) {
 __global__ void matmul_shared_kernel(const float *A, const float *B, float *C, int n) {
     __shared__ float shared_a[BLOCK_SIZE][BLOCK_SIZE];
     __shared__ float shared_b[BLOCK_SIZE][BLOCK_SIZE];
-
     int bx = hipBlockIdx_x;
     int by = hipBlockIdx_y;
     int tx = hipThreadIdx_x;
     int ty = hipThreadIdx_y;
-
-    int row = by * BLOCK_SIZE + ty;
+    int row = by * BLOCK_SIZE + ty * TM;
     int col = bx * BLOCK_SIZE + tx;
 
-    float sum = 0.0f;
+    float threadResults[TM] = {0.0f};
 
     for (int tile = 0; tile < (n + BLOCK_SIZE - 1) / BLOCK_SIZE; ++tile) {
-        if (row < n && tile * BLOCK_SIZE + tx < n)
-            shared_a[ty][tx] = A[row * n + tile * BLOCK_SIZE + tx];
-        else
-            shared_a[ty][tx] = 0.0f;
+        for (int i = 0; i < TM; ++i) {
+            if (row + i < n && tile * BLOCK_SIZE + tx < n)
+                shared_a[ty * TM + i][tx] = A[(row + i) * n + tile * BLOCK_SIZE + tx];
+            else
+                shared_a[ty * TM + i][tx] = 0.0f;
+        }
 
-        if (tile * BLOCK_SIZE + ty < n && col < n)
-            shared_b[ty][tx] = B[(tile * BLOCK_SIZE + ty) * n + col];
-        else
-            shared_b[ty][tx] = 0.0f;
-
+        for (int i = 0; i < TM; ++i) {
+            if (tile * BLOCK_SIZE + ty * TM + i < n && col < n)
+                shared_b[ty * TM + i][tx] = B[(tile * BLOCK_SIZE + ty * TM + i) * n + col];
+            else
+                shared_b[ty * TM + i][tx] = 0.0f;
+        }
         __syncthreads();
 
-        #pragma unroll
-        for (int k = 0; k < BLOCK_SIZE; ++k)
-            sum += shared_a[ty][k] * shared_b[k][tx];
-
+        for (int k = 0; k < BLOCK_SIZE; ++k) {
+            #pragma unroll
+            for (int i = 0; i < TM; ++i) {
+                threadResults[i] += shared_a[ty * TM + i][k] * shared_b[k][tx];
+            }
+        }
         __syncthreads();
     }
 
-    if (row < n && col < n)
-        C[row * n + col] = sum;
+    for (int i = 0; i < TM; ++i) {
+        if (row + i < n && col < n)
+            C[(row + i) * n + col] = threadResults[i];
+    }
 }
 
 __global__ void matmul_complex_kernel(const float* A, const float* B, float* C, int n) {
