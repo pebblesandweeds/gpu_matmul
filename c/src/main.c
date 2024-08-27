@@ -70,8 +70,6 @@ int main(int argc, char* argv[]) {
     CHECK(hipMemcpy(h_C_naive, d_C_naive, size, hipMemcpyDeviceToHost));
 
     // Shared memory matrix multiplication
-    //dim3 sharedblockDim = {BLOCK_SIZE, BLOCK_SIZE, 1};
-    //dim3 sharedgridDim = {(N + blockDim.x - 1) / blockDim.x, (N + blockDim.y - 1) / blockDim.y, 1};
     dim3 sharedgridDim((N + BLOCK_SIZE - 1) / BLOCK_SIZE, (N + BLOCK_SIZE - 1) / BLOCK_SIZE);
     dim3 sharedblockDim(BLOCK_SIZE, BLOCK_SIZE / TM);
     start_timer(&start, &stop);

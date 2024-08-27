@@ -16,29 +16,30 @@ __global__ void matmul_kernel(const float* A, const float* B, float* C, int n) {
 __global__ void matmul_shared_kernel(const float *A, const float *B, float *C, int n) {
     __shared__ float shared_a[BLOCK_SIZE][BLOCK_SIZE];
     __shared__ float shared_b[BLOCK_SIZE][BLOCK_SIZE];
-    int bx = hipBlockIdx_x;
-    int by = hipBlockIdx_y;
-    int tx = hipThreadIdx_x;
-    int ty = hipThreadIdx_y;
+
+    int bx = blockIdx.x;
+    int by = blockIdx.y;
+    int tx = threadIdx.x;
+    int ty = threadIdx.y;
+
     int row = by * BLOCK_SIZE + ty * TM;
     int col = bx * BLOCK_SIZE + tx;
 
     float threadResults[TM] = {0.0f};
 
     for (int tile = 0; tile < (n + BLOCK_SIZE - 1) / BLOCK_SIZE; ++tile) {
+        // Combined loading of A and B
         for (int i = 0; i < TM; ++i) {
-            if (row + i < n && tile * BLOCK_SIZE + tx < n)
-                shared_a[ty * TM + i][tx] = A[(row + i) * n + tile * BLOCK_SIZE + tx];
-            else
-                shared_a[ty * TM + i][tx] = 0.0f;
+            int shared_idx = ty * TM + i;
+            if (row + i < n && tile * BLOCK_SIZE + tx < n) {
+                shared_a[shared_idx][tx] = A[(row + i) * n + tile * BLOCK_SIZE + tx];
+                shared_b[shared_idx][tx] = B[(tile * BLOCK_SIZE + shared_idx) * n + col];
+            } else {
+                shared_a[shared_idx][tx] = 0.0f;
+                shared_b[shared_idx][tx] = 0.0f;
+            }
         }
 
-        for (int i = 0; i < TM; ++i) {
-            if (tile * BLOCK_SIZE + ty * TM + i < n && col < n)
-                shared_b[ty * TM + i][tx] = B[(tile * BLOCK_SIZE + ty * TM + i) * n + col];
-            else
-                shared_b[ty * TM + i][tx] = 0.0f;
-        }
         __syncthreads();
 
         for (int k = 0; k < BLOCK_SIZE; ++k) {
@@ -47,6 +48,7 @@ __global__ void matmul_shared_kernel(const float *A, const float *B, float *C, i
                 threadResults[i] += shared_a[ty * TM + i][k] * shared_b[k][tx];
             }
         }
+
         __syncthreads();
     }
 
