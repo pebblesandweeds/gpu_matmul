@@ -13,7 +13,7 @@ __global__ void matmul_kernel(const float* A, const float* B, float* C, int n) {
     }
 }
 
-__global__ void matmul_shared_kernel(const float* __restrict__ A, const float* __restrict__ B, float* __restrict__ C, int n) {
+__global__ void matmul_scalar_kernel(const float* __restrict__ A, const float* __restrict__ B, float* __restrict__ C, int n) {
     int threadCol = hipThreadIdx_x % (BLOCK_SIZE / thread_multiplier);
     int threadRow = hipThreadIdx_x / (BLOCK_SIZE / thread_multiplier);
 

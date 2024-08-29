@@ -73,7 +73,7 @@ int main(int argc, char* argv[]) {
     dim3 sharedgridDim((N + BLOCK_SIZE - 1) / BLOCK_SIZE, (N + BLOCK_SIZE - 1) / BLOCK_SIZE);
     dim3 sharedblockDim(BLOCK_SIZE * BLOCK_SIZE / (thread_multiplier * thread_multiplier), 1);
     start_timer(&start, &stop);
-    hipLaunchKernelGGL(matmul_shared_kernel, sharedgridDim, sharedblockDim, 0, NULL, d_A, d_B, d_C_shared, N);
+    hipLaunchKernelGGL(matmul_scalar_kernel, sharedgridDim, sharedblockDim, 0, NULL, d_A, d_B, d_C_shared, N);
     CHECK(hipGetLastError());
     float milliseconds_shared = stop_timer(start, stop);
     CHECK(hipMemcpy(h_C_shared, d_C_shared, size, hipMemcpyDeviceToHost));
