@@ -5,7 +5,7 @@
 
 #define N 16384
 #define BLOCK_SIZE 32
-#define TM 4
+#define thread_multiplier 4
 
 #define CHECK(cmd) \
     do { \

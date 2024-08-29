@@ -13,34 +13,31 @@ __global__ void matmul_kernel(const float* A, const float* B, float* C, int n) {
     }
 }
 
-__global__ void matmul_shared_kernel(const float* A, const float* B, float* C, int n) {
-    int block_row = hipBlockIdx_y;
-    int block_col = hipBlockIdx_x;
+__global__ void matmul_shared_kernel(const float* __restrict__ A, const float* __restrict__ B, float* __restrict__ C, int n) {
+    int threadCol = hipThreadIdx_x % (BLOCK_SIZE / thread_multiplier);
+    int threadRow = hipThreadIdx_x / (BLOCK_SIZE / thread_multiplier);
 
-    __shared__ float a_shared[BLOCK_SIZE * BLOCK_SIZE];
-    __shared__ float b_shared[BLOCK_SIZE * BLOCK_SIZE];
+    __shared__ float shared_a[BLOCK_SIZE * BLOCK_SIZE];
+    __shared__ float shared_b[BLOCK_SIZE * BLOCK_SIZE];
 
-    int threadCol = hipThreadIdx_x % (BLOCK_SIZE / TM);
-    int threadRow = hipThreadIdx_x / (BLOCK_SIZE / TM);
+    A += hipBlockIdx_y * BLOCK_SIZE * n;
+    B += hipBlockIdx_x * BLOCK_SIZE;
+    C += hipBlockIdx_y * BLOCK_SIZE * n + hipBlockIdx_x * BLOCK_SIZE;
 
-    int warpId = hipThreadIdx_x / 32;
-    int laneId = hipThreadIdx_x % 32;
+    float threadResults[thread_multiplier * thread_multiplier] = {0.0f};
 
-    A += block_row * BLOCK_SIZE * n;
-    B += block_col * BLOCK_SIZE;
-    C += block_row * BLOCK_SIZE * n + block_col * BLOCK_SIZE;
+    float regM[thread_multiplier] = {0.0f};
+    float regN[thread_multiplier] = {0.0f};
 
-    float results[TM] = {0.0f};
+    int threads_per_block = BLOCK_SIZE * BLOCK_SIZE / (thread_multiplier * thread_multiplier);
+    int stride = threads_per_block / BLOCK_SIZE;
 
-    for (int shared_block_idx = 0; shared_block_idx < n; shared_block_idx += BLOCK_SIZE) {
-        int row_a_base = (warpId * TM) % BLOCK_SIZE;
-        int col_b_base = (warpId * TM) % BLOCK_SIZE;
-
-        for (int i = 0; i < TM; i++) {
-            int row_a = (row_a_base + i) % BLOCK_SIZE;
-            int col_b = (col_b_base + i) % BLOCK_SIZE;
-            a_shared[row_a * BLOCK_SIZE + laneId] = A[row_a * n + laneId];
-            b_shared[col_b * BLOCK_SIZE + laneId] = B[col_b * n + laneId];
+    for (int block_index = 0; block_index < n; block_index += BLOCK_SIZE) {
+        for (int i = 0; i < BLOCK_SIZE; i += stride) {
+            int row = hipThreadIdx_x / BLOCK_SIZE;
+            int col = hipThreadIdx_x % BLOCK_SIZE;
+            shared_a[(row + i) * BLOCK_SIZE + col] = A[(row + i) * n + col];
+            shared_b[(row + i) * BLOCK_SIZE + col] = B[(row + i) * n + col];
         }
 
         __syncthreads();
@@ -48,22 +45,29 @@ __global__ void matmul_shared_kernel(const float* A, const float* B, float* C, i
         A += BLOCK_SIZE;
         B += BLOCK_SIZE * n;
 
-        for (int dot_product_idx = 0; dot_product_idx < BLOCK_SIZE; ++dot_product_idx) {
-            float a_val = a_shared[threadRow * BLOCK_SIZE + dot_product_idx];
-            float b_cache = b_shared[dot_product_idx * BLOCK_SIZE + threadCol * TM];
+        for (int dot_product_index = 0; dot_product_index < BLOCK_SIZE; ++dot_product_index) {
+            for (int i = 0; i < thread_multiplier; ++i) {
+                regM[i] = shared_a[(threadRow * thread_multiplier + i) * BLOCK_SIZE + dot_product_index];
+                regN[i] = shared_b[dot_product_index * BLOCK_SIZE + threadCol * thread_multiplier + i];
+            }
 
-            for (int t = 0; t < TM; ++t) {
-                results[t] += a_val * b_cache;
-                b_cache = b_shared[dot_product_idx * BLOCK_SIZE + threadCol * TM + t + 1];
+            for (int rm = 0; rm < thread_multiplier; rm += 2) {
+                for (int rn = 0; rn < thread_multiplier; rn += 2) {
+                    threadResults[rm * thread_multiplier + rn] = __fmaf_rn(regM[rm], regN[rn], threadResults[rm * thread_multiplier + rn]);
+                    threadResults[rm * thread_multiplier + rn + 1] = __fmaf_rn(regM[rm], regN[rn + 1], threadResults[rm * thread_multiplier + rn + 1]);
+                    threadResults[(rm + 1) * thread_multiplier + rn] = __fmaf_rn(regM[rm + 1], regN[rn], threadResults[(rm + 1) * thread_multiplier + rn]);
+                    threadResults[(rm + 1) * thread_multiplier + rn + 1] = __fmaf_rn(regM[rm + 1], regN[rn + 1], threadResults[(rm + 1) * thread_multiplier + rn + 1]);
+                }
             }
         }
 
         __syncthreads();
 
     }
-
-    for (int t = 0; t < TM; ++t) {
-        C[threadRow * n + threadCol * TM + t] = results[t];
+    for (int rm = 0; rm < thread_multiplier; ++rm) {
+        for (int rn = 0; rn < thread_multiplier; ++rn) {
+            C[(threadRow * thread_multiplier + rm) * n + threadCol * thread_multiplier + rn] = threadResults[rm * thread_multiplier + rn];
+        }
     }
 }
 
