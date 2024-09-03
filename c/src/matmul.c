@@ -13,61 +13,41 @@ __global__ void matmul_kernel(const float* A, const float* B, float* C, int n) {
     }
 }
 
-__global__ void matmul_scalar_kernel(const float* __restrict__ A, const float* __restrict__ B, float* __restrict__ C, int n) {
-    int threadCol = hipThreadIdx_x % (BLOCK_SIZE / thread_multiplier);
-    int threadRow = hipThreadIdx_x / (BLOCK_SIZE / thread_multiplier);
+__global__ void matmul_scalar_kernel(const float* A, const float* B, float* C, int n) {
+    const int TILE_SIZE = 4;
+    __shared__ float shared_a[BLOCK_SIZE * TILE_SIZE];
+    __shared__ float shared_b[TILE_SIZE * BLOCK_SIZE];
+    int blockRow = hipBlockIdx_y;
+    int blockColumn = hipBlockIdx_x;
+    int threadRow = hipThreadIdx_x / BLOCK_SIZE;
+    int threadColumn = hipThreadIdx_x % BLOCK_SIZE;
 
-    __shared__ float shared_a[BLOCK_SIZE * BLOCK_SIZE];
-    __shared__ float shared_b[BLOCK_SIZE * BLOCK_SIZE];
+    A += blockRow * BLOCK_SIZE * n;
+    B += blockColumn * BLOCK_SIZE;
+    C += blockRow * BLOCK_SIZE * n + blockColumn * BLOCK_SIZE;
 
-    A += hipBlockIdx_y * BLOCK_SIZE * n;
-    B += hipBlockIdx_x * BLOCK_SIZE;
-    C += hipBlockIdx_y * BLOCK_SIZE * n + hipBlockIdx_x * BLOCK_SIZE;
+    float threadResults[thread_multiplier] = {0.0};
 
-    float threadResults[thread_multiplier * thread_multiplier] = {0.0f};
-
-    float regM[thread_multiplier] = {0.0f};
-    float regN[thread_multiplier] = {0.0f};
-
-    int threads_per_block = BLOCK_SIZE * BLOCK_SIZE / (thread_multiplier * thread_multiplier);
-    int stride = threads_per_block / BLOCK_SIZE;
-
-    for (int block_index = 0; block_index < n; block_index += BLOCK_SIZE) {
-        for (int i = 0; i < BLOCK_SIZE; i += stride) {
-            int row = hipThreadIdx_x / BLOCK_SIZE;
-            int col = hipThreadIdx_x % BLOCK_SIZE;
-            shared_a[(row + i) * BLOCK_SIZE + col] = A[(row + i) * n + col];
-            shared_b[(row + i) * BLOCK_SIZE + col] = B[(row + i) * n + col];
-        }
-
+    for (int bkIdx = 0; bkIdx < n; bkIdx += TILE_SIZE) {
+        shared_a[hipThreadIdx_x] = A[hipThreadIdx_x % TILE_SIZE + (hipThreadIdx_x / TILE_SIZE) * n];
+        shared_b[hipThreadIdx_x] = B[(hipThreadIdx_x / BLOCK_SIZE) * n + hipThreadIdx_x % BLOCK_SIZE];
         __syncthreads();
 
-        A += BLOCK_SIZE;
-        B += BLOCK_SIZE * n;
+        A += TILE_SIZE;
+        B += TILE_SIZE * n;
 
-        for (int dot_product_index = 0; dot_product_index < BLOCK_SIZE; ++dot_product_index) {
-            for (int i = 0; i < thread_multiplier; ++i) {
-                regM[i] = shared_a[(threadRow * thread_multiplier + i) * BLOCK_SIZE + dot_product_index];
-                regN[i] = shared_b[dot_product_index * BLOCK_SIZE + threadCol * thread_multiplier + i];
-            }
-
-            for (int rm = 0; rm < thread_multiplier; rm += 2) {
-                for (int rn = 0; rn < thread_multiplier; rn += 2) {
-                    threadResults[rm * thread_multiplier + rn] = __fmaf_rn(regM[rm], regN[rn], threadResults[rm * thread_multiplier + rn]);
-                    threadResults[rm * thread_multiplier + rn + 1] = __fmaf_rn(regM[rm], regN[rn + 1], threadResults[rm * thread_multiplier + rn + 1]);
-                    threadResults[(rm + 1) * thread_multiplier + rn] = __fmaf_rn(regM[rm + 1], regN[rn], threadResults[(rm + 1) * thread_multiplier + rn]);
-                    threadResults[(rm + 1) * thread_multiplier + rn + 1] = __fmaf_rn(regM[rm + 1], regN[rn + 1], threadResults[(rm + 1) * thread_multiplier + rn + 1]);
-                }
+        for (int k = 0; k < TILE_SIZE; ++k) {
+            float tmpB = shared_b[k * BLOCK_SIZE + threadColumn];
+            for (int resIdx = 0; resIdx < thread_multiplier; ++resIdx) {
+                threadResults[resIdx] +=
+                    shared_a[(threadRow * thread_multiplier + resIdx) * TILE_SIZE + k] * tmpB;
             }
         }
-
         __syncthreads();
-
     }
-    for (int rm = 0; rm < thread_multiplier; ++rm) {
-        for (int rn = 0; rn < thread_multiplier; ++rn) {
-            C[(threadRow * thread_multiplier + rm) * n + threadCol * thread_multiplier + rn] = threadResults[rm * thread_multiplier + rn];
-        }
+
+    for (int resIdx = 0; resIdx < thread_multiplier; ++resIdx) {
+        C[(threadRow * thread_multiplier + resIdx) * n + threadColumn] = threadResults[resIdx];
     }
 }
 
