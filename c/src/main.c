@@ -70,7 +70,7 @@ int main(int argc, char* argv[]) {
     CHECK(hipMemcpy(h_C_naive, d_C_naive, size, hipMemcpyDeviceToHost));
 
     // Shared memory matrix multiplication
-    dim3 scalarblockDim((BLOCK_SIZE * BLOCK_SIZE) / thread_multiplier);
+    dim3 scalarblockDim((BLOCK_SIZE * BLOCK_SIZE) / (thread_multiplier * thread_multiplier));
     dim3 scalargridDim{(N + BLOCK_SIZE - 1) / BLOCK_SIZE, (N + BLOCK_SIZE - 1) / BLOCK_SIZE, 1};
     start_timer(&start, &stop);
     hipLaunchKernelGGL(matmul_scalar_kernel, scalargridDim, scalarblockDim, 0, NULL, d_A, d_B, d_C_scalar, N);
