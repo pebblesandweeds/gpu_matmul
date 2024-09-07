@@ -22,22 +22,23 @@ __global__ void matmul_scalar_kernel(const float* __restrict__ A, const float* _
     int row = hipBlockIdx_y * BLOCK_SIZE + threadRow * TILE_SIZE;
     int col = hipBlockIdx_x * BLOCK_SIZE + threadCol * TILE_SIZE;
 
+    A += row * n;
+    B += col;
+    C += row * n + col;
+
     for (int block_index = 0; block_index < (n + BLOCK_SIZE - 1) / BLOCK_SIZE; ++block_index) {
         for (int i = 0; i < TILE_SIZE; ++i) {
             for (int j = 0; j < TILE_SIZE; ++j) {
                 int sharedIdx = threadRow * TILE_SIZE * BLOCK_SIZE + threadCol * TILE_SIZE + i * BLOCK_SIZE + j;
-                int globalRowA = row + i;
-                int globalColA = block_index * BLOCK_SIZE + threadCol * TILE_SIZE + j;
-                if (globalRowA < n && globalColA < n) {
-                    shared_a[sharedIdx] = A[globalRowA * n + globalColA];
+                int globalColA = threadCol * TILE_SIZE + j;
+                if (row + i < n && block_index * BLOCK_SIZE + globalColA < n) {
+                    shared_a[sharedIdx] = A[i * n + globalColA];
                 } else {
                     shared_a[sharedIdx] = 0.0f;
                 }
-
-                int globalRowB = block_index * BLOCK_SIZE + threadRow * TILE_SIZE + i;
-                int globalColB = col + j;
-                if (globalRowB < n && globalColB < n) {
-                    shared_b[sharedIdx] = B[globalRowB * n + globalColB];
+                int globalRowB = threadRow * TILE_SIZE + i;
+                if (block_index * BLOCK_SIZE + globalRowB < n && col + j < n) {
+                    shared_b[sharedIdx] = B[globalRowB * n + j];
                 } else {
                     shared_b[sharedIdx] = 0.0f;
                 }
@@ -54,12 +55,15 @@ __global__ void matmul_scalar_kernel(const float* __restrict__ A, const float* _
             }
         }
         __syncthreads();
+
+        A += BLOCK_SIZE;
+        B += BLOCK_SIZE * n;
     }
 
     for (int i = 0; i < TILE_SIZE; ++i) {
         for (int j = 0; j < TILE_SIZE; ++j) {
             if (row + i < n && col + j < n) {
-                C[(row + i) * n + col + j] = result[i][j];
+                C[i * n + j] = result[i][j];
             }
         }
     }
