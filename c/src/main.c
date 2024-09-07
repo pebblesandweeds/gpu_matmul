@@ -70,7 +70,7 @@ int main(int argc, char* argv[]) {
     CHECK(hipMemcpy(h_C_naive, d_C_naive, size, hipMemcpyDeviceToHost));
 
     // Shared memory matrix multiplication
-    dim3 scalarblockDim(16x16);
+    dim3 scalarblockDim(16,16);
     dim3 scalargridDim(512,512);
     start_timer(&start, &stop);
     hipLaunchKernelGGL(matmul_scalar_kernel, scalargridDim, scalarblockDim, 0, NULL, d_A, d_B, d_C_scalar, N);
