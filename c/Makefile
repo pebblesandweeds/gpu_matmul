@@ -1,6 +1,6 @@
 CC = hipcc
 CFLAGS = -I./include -D__HIP_PLATFORM_AMD__=1 -x hip
-LDFLAGS = 
+LDFLAGS = -lrocblas
 
 SRC_DIR = src
 OBJ_DIR = obj

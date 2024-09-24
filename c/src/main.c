@@ -4,6 +4,7 @@
 #include "matmul.h"
 #include "timer.h"
 #include "check_utils.h"
+#include <rocblas/rocblas.h>
 
 void print_gpu_info(int deviceId) {
     hipDeviceProp_t deviceProp;
@@ -38,14 +39,15 @@ int main(int argc, char* argv[]) {
     CHECK(hipSetDevice(deviceId));
     print_gpu_info(deviceId);
 
-    float *h_A, *h_B, *h_C_naive, *h_C_scalar;
-    float *d_A, *d_B, *d_C_naive, *d_C_scalar;
+    float *h_A, *h_B, *h_C_naive, *h_C_scalar, *h_C_mfma;
+    float *d_A, *d_B, *d_C_naive, *d_C_scalar, *d_C_mfma;
     size_t size = N * N * sizeof(float);
 
     h_A = (float*)malloc(size);
     h_B = (float*)malloc(size);
     h_C_naive = (float*)malloc(size);
     h_C_scalar = (float*)malloc(size);
+    h_C_mfma = (float*)malloc(size);
 
     init_matrix(h_A, N);
     init_matrix(h_B, N);
@@ -54,6 +56,7 @@ int main(int argc, char* argv[]) {
     CHECK(hipMalloc((void**)&d_B, size));
     CHECK(hipMalloc((void**)&d_C_naive, size));
     CHECK(hipMalloc((void**)&d_C_scalar, size));
+    CHECK(hipMalloc((void**)&d_C_mfma, size));
 
     CHECK(hipMemcpy(d_A, h_A, size, hipMemcpyHostToDevice));
     CHECK(hipMemcpy(d_B, h_B, size, hipMemcpyHostToDevice));
@@ -70,50 +73,69 @@ int main(int argc, char* argv[]) {
     CHECK(hipMemcpy(h_C_naive, d_C_naive, size, hipMemcpyDeviceToHost));
 
     // Shared memory matrix multiplication
-    dim3 scalarblockDim(16,16);
-    dim3 scalargridDim(512,512);
+    dim3 scalargridDim((N + BLOCK_SIZE - 1) / BLOCK_SIZE, (N + BLOCK_SIZE - 1) / BLOCK_SIZE);
+    dim3 scalarblockDim(BLOCK_SIZE * BLOCK_SIZE / (thread_multiplier * thread_multiplier), 1);
     start_timer(&start, &stop);
     hipLaunchKernelGGL(matmul_scalar_kernel, scalargridDim, scalarblockDim, 0, NULL, d_A, d_B, d_C_scalar, N);
     CHECK(hipGetLastError());
     float milliseconds_scalar = stop_timer(start, stop);
     CHECK(hipMemcpy(h_C_scalar, d_C_scalar, size, hipMemcpyDeviceToHost));
 
-    // Verify naive implementation
+    // MFMA matrix multiplication
+    dim3 mfmaBlockDim(64,1);
+    dim3 mfmaGridDim(256, 16384);
+    start_timer(&start, &stop);
+    hipLaunchKernelGGL(gemm_mfma_naive, mfmaGridDim, mfmaBlockDim, 0, NULL, d_C_mfma, (__fp16*)d_A, (__fp16*)d_B, d_C_mfma, 1.0f, 0.0f);
+    CHECK(hipGetLastError());
+    float milliseconds_mfma = stop_timer(start, stop);
+    CHECK(hipMemcpy(h_C_mfma, d_C_mfma, size, hipMemcpyDeviceToHost));
+
+    // Verify implementations
     printf("\nVerifying naive implementation:\n");
+
     bool naive_correct = partial_verify(h_A, h_B, h_C_naive, N * N, 1e-4);
 
     // Verify scalar memory implementation
     printf("\nVerifying scalar memory implementation:\n");
     bool scalar_correct = partial_verify(h_A, h_B, h_C_scalar, N * N, 1e-4);
 
-    if (naive_correct && scalar_correct) {
-        printf("Both implementations appear to be correct.\n");
-    } else if (naive_correct) {
-        printf("Naive implementation is correct, but scalar memory implementation may have issues.\n");
-    } else if (scalar_correct) {
-        printf("Shared memory implementation is correct, but naive implementation may have issues.\n");
+    // Verify MFMA implementation
+    printf("\nVerifying MFMA implementation:\n");
+    bool mfma_correct = partial_verify(h_A, h_B, h_C_mfma, N * N, 1e-4);
+
+    if (naive_correct && scalar_correct && mfma_correct) {
+        printf("All implementations appear to be correct.\n");
     } else {
-        printf("Both implementations may have issues.\n");
+        printf("Some implementations may have issues:\n");
+        printf("Naive: %s\n", naive_correct ? "Correct" : "Incorrect");
+        printf("Scalar: %s\n", scalar_correct ? "Correct" : "Incorrect");
+        printf("MFMA: %s\n", mfma_correct ? "Correct" : "Incorrect");
     }
 
     double seconds_naive = milliseconds_naive / 1000.0;
     double seconds_scalar = milliseconds_scalar / 1000.0;
+    double seconds_mfma = milliseconds_mfma / 1000.0;
     long long flop = 2LL * N * N * N;
     double gflops_naive = (flop / seconds_naive) / 1e9;
     double gflops_scalar = (flop / seconds_scalar) / 1e9;
+    double gflops_mfma = (flop / seconds_mfma) / 1e9;
     printf("Naive GPU Matmul time taken: %.6f seconds\n", seconds_naive);
     printf("Naive GPU Matmul: %.2f GFLOPS\n", gflops_naive);
     printf("Shared memory GPU Matmul time taken: %.6f seconds\n", seconds_scalar);
     printf("Shared memory GPU Matmul: %.2f GFLOPS\n", gflops_scalar);
+    printf("MFMA GPU Matmul time taken: %.6f seconds\n", seconds_mfma);
+    printf("MFMA GPU Matmul: %.2f GFLOPS\n", gflops_mfma);
 
     free(h_A);
     free(h_B);
     free(h_C_naive);
     free(h_C_scalar);
+    free(h_C_mfma);
     CHECK(hipFree(d_A));
     CHECK(hipFree(d_B));
     CHECK(hipFree(d_C_naive));
     CHECK(hipFree(d_C_scalar));
+    CHECK(hipFree(d_C_mfma));
 
     return 0;
 }

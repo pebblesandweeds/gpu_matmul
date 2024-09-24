@@ -18,6 +18,6 @@
 
 __global__ void matmul_kernel(const float* A, const float* B, float* C, int n);
 __global__ void matmul_scalar_kernel(const float* A, const float* B, float* C, int n);
+__global__ void gemm_mfma_naive(float* D, const __fp16* A, const __fp16* B, const float* C, float alpha, float beta);
 void init_matrix(float *matrix, int n);
-
 #endif // MATMUL_H
