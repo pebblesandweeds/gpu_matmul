@@ -12,7 +12,7 @@ This repository demonstrates matrix multiplication on AMD GPUs using Python/PyTo
 
 ### Installation
 
-Installation of AMD ROCm 6.x and Pytorch with ROCm support are out of scope for this repo, see AMD ...see [AMD documentation](https://github.com/ROCm/ROCm) for instructions.  The only dependencies needed are PyTorch for Python, making requirements.txt unnecessary, and the C libraries installed by ROCm 6.x.
+Installation of AMD ROCm 6.x and Pytorch with ROCm support are out of scope for this repo, see AMD [AMD documentation](https://github.com/ROCm/ROCm) for instructions.  The only dependencies needed are PyTorch for Python, making requirements.txt unnecessary, and the C libraries installed by ROCm 6.x.
 
 ## Usage
 
