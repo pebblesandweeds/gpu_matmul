@@ -27,7 +27,7 @@ Run the python script using `python pytorch_matmul.py`
 
 ### Performance Output
 
-The PyTorch implementation uses torch.matmul, which abstracts away the complexities of GPU interaction, making the code concise and straightforward. When running this version, users can expect it to set up the input tensors and perform matrix multiplication efficiently using the GPU, with minimal manual intervention. The output will provide a summary of the computation time and performance achieved across multiple runs.
+The PyTorch implementation uses `torch.matmul`, which abstracts away the complexities of GPU interaction, making the code concise and straightforward. When running this version, users can expect it to set up the input tensors and perform matrix multiplication efficiently using the GPU, with minimal manual intervention. The output will provide a summary of the computation time and performance achieved across multiple runs.
 
 The C implementation uses the AMD rocBLAS library directly, requiring more hands-on setup, including GPU context initialization and data transfers. Since we are implementing the rocBLAS framework ourselves, it also includes accuracy checks to ensure the results are correct. This version outputs GPU specifications, memory transfer times, matrix multiplication times, and the performance for each run. Users will also see results of spot checks to confirm the numerical correctness of the GPU computations compared to CPU expectations, which is important to ensure that high performance isn't accompanied by incorrect results.
 
