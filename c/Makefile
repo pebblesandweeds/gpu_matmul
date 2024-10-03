@@ -10,15 +10,15 @@ EXECUTABLE = gpu_matmul
 all: $(EXECUTABLE)
 
 $(EXECUTABLE): $(OBJECTS)
-        $(CC) $(LDFLAGS) $^ -o $@
+	$(CC) $(LDFLAGS) $^ -o $@
 
 $(OBJ_DIR)/%.o: $(SRC_DIR)/%.c | $(OBJ_DIR)
-        $(CC) $(CFLAGS) -c $< -o $@
+	$(CC) $(CFLAGS) -c $< -o $@
 
 $(OBJ_DIR):
-        mkdir -p $@
+	mkdir -p $@
 
 clean:
-        rm -rf $(OBJ_DIR) $(EXECUTABLE)
+	rm -rf $(OBJ_DIR) $(EXECUTABLE)
 
 .PHONY: all clean
