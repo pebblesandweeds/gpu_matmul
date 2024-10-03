@@ -1,5 +1,6 @@
 ## Project Structure
 
+```
 matrix-multiplication/
 ├── README.md
 ├── Makefile
@@ -16,3 +17,4 @@ matrix-multiplication/
 │   └── utils.c
 └── obj/
     └── (object files will be placed here)
+```
