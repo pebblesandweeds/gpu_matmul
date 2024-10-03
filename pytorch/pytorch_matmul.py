@@ -1,29 +1,38 @@
 import torch
-from torch.utils.benchmark import Timer
+import time
 import argparse
 
 def main(gpu_id):
     N = 16384
+    NUM_RUNS = 25  # Number of runs
+
     device = torch.device(f"cuda:{gpu_id}")
     torch.cuda.set_device(device)
-
     # Clear the CUDA cache before running the benchmark
     torch.cuda.empty_cache()
-    
+
     A = torch.empty(N, N, dtype=torch.float32, device=device).uniform_(-1,1)
     B = torch.empty(N, N, dtype=torch.float32, device=device).uniform_(-1,1)
 
-    timer = Timer(stmt='torch.matmul(A, B); torch.cuda.synchronize()',
-                  globals={'A': A, 'B': B, 'torch': torch})
-
-    result = timer.timeit(number=10)
     flops = 2 * N**3
-    gflops = (flops / result.mean) / 1e9
 
     print(f"Matrix size: {N}x{N}")
-    print(f"Mean execution time: {result.mean:.6f} seconds")
-    print(f"Performance: {gflops:.2f} GFLOPS")
+    print(f"Number of runs: {NUM_RUNS}")
     print(f"GPU used: {gpu_id} - {torch.cuda.get_device_name(gpu_id)}")
+    print("\nRun\tTime (s)\tTFLOPS")
+    print("-" * 30)
+
+    for i in range(NUM_RUNS):
+        torch.cuda.synchronize()
+        start = time.perf_counter()
+        torch.matmul(A, B)
+        torch.cuda.synchronize()
+        end = time.perf_counter()
+
+        run_time = end - start
+        tflops = (flops / run_time) / 1e12
+
+        print(f"{i+1}\t{run_time:.6f}\t{tflops:.2f}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="PyTorch Matrix Multiplication Benchmark")
