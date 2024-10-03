@@ -1,26 +1,27 @@
-CC = hipcc
-CFLAGS = -I./include -D__HIP_PLATFORM_AMD__=1 -x hip
-LDFLAGS = -lrocblas
+CC := hipcc
+CFLAGS := -D__HIP_PLATFORM_AMD__=1 -x hip
+LIBS := -lrocblas
+INCLUDE := -Iinclude
 
-SRC_DIR = src
-OBJ_DIR = obj
+SRC_DIR := src
+OBJ_DIR := obj
+SOURCES := $(wildcard $(SRC_DIR)/*.c)
+OBJECTS := $(patsubst $(SRC_DIR)/%.c,$(OBJ_DIR)/%.o,$(SOURCES))
 
-SOURCES = $(wildcard $(SRC_DIR)/*.c)
-OBJECTS = $(SOURCES:$(SRC_DIR)/%.c=$(OBJ_DIR)/%.o)
-EXECUTABLE = gpu_matmul
+TARGET := matrix_multiplication
 
-all: $(EXECUTABLE)
+all: $(TARGET)
 
-$(EXECUTABLE): $(OBJECTS)
-	$(CC) $(LDFLAGS) $^ -o $@
+$(TARGET): $(OBJECTS)
+	$(CC) $(CFLAGS) $(OBJECTS) -o $@ $(LIBS)
 
 $(OBJ_DIR)/%.o: $(SRC_DIR)/%.c | $(OBJ_DIR)
-	$(CC) $(CFLAGS) -c $< -o $@
+	$(CC) $(CFLAGS) $(INCLUDE) -c $< -o $@
 
 $(OBJ_DIR):
 	mkdir -p $@
 
 clean:
-	rm -rf $(OBJ_DIR) $(EXECUTABLE)
+	rm -rf $(OBJ_DIR) $(TARGET)
 
 .PHONY: all clean

@@ -86,7 +86,7 @@ float random_float() {
 }
 
 int main() {
-    const int NUM_RUNS = 25;
+    const int NUM_RUNS = 15;
     size_t size = N * N * sizeof(float);
 
     // Print GPU information
