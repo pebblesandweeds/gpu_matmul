@@ -3,14 +3,16 @@ Accelerating Matrix Multiplication on AMD GPUs with rocBLAS in C
 
 .. admonition:: Highlights 
 
- Matrix multiplication is the core operation behind deep learning, driving computations in neural networks for training and inference. This blog post demonstrates how AMD's rocBLAS library can be used in C to achieve matrix multiplication performance comparable to PyTorch’s implementation, leveraging low-level control for efficient use of AMD GPUs.
+ Matrix multiplication is the core operation behind deep learning, driving computations in neural networks for training and inference. This blog post demonstrates how AMD's rocBLAS library can be used in C to achieve matrix multiplication performance comparable to PyTorch's implementation, leveraging low-level control for efficient use of AMD GPUs.
 
- - **Baseline with Pytorch**: **~37 TFLOPS**, using `this implementation <https://github.com/pebblesandweeds/gpu_matmul/blob/main/pytorch/pytorch_matmul.py>`_ for comparison with our C code.
- - **Custom rocBLAS implementation in C**: **~37 TFLOPS**, leveraging `rocBLAS  and custom C code. <https://github.com/pebblesandweeds/gpu_matmul/blob/main/c/src/matrix_operations.c>`_
+ - **PyTorch Baseline**: Achieves **~37 TFLOPS** using `this simple code <https://github.com/pebblesandweeds/gpu_matmul/blob/main/pytorch/pytorch_matmul.py>`_. PyTorch's high-level API (``torch.matmul``) abstracts the underlying rocBLAS operations, providing ease of use without sacrificing performance on AMD GPUs.
 
- These results confirm that a well-optimized C implementation with rocBLAS can rival PyTorch’s performance while offering the flexibility of lower-level code.
+ - **Custom rocBLAS in C**: Matches PyTorch at **~37 TFLOPS** with `this C implementation <https://github.com/pebblesandweeds/gpu_matmul/blob/main/c/src/matrix_operations.c>`_. By directly calling ``rocblas_sgemm()``, it offers fine-grained control and optimization potential while maintaining top-tier performance.
+
+ These results demonstrate that C with rocBLAS can achieve performance on par with PyTorch, while offering developers a more intimate connection to the GPU hardware. By working with rocBLAS, programmers gain valuable insights into GPU computing that high-level frameworks like PyTorch abstract away. This approach not only matches the speed of PyTorch but also serves as a stepping stone towards even lower-level GPU programming, such as writing custom HIP kernels. Thus, C with rocBLAS provides a powerful middle ground - delivering top-tier performance while introducing developers to the intricacies of GPU programming.
 
  Get all of the code `in this repo <https://github.com/pebblesandweeds/gpu_matmul>`_.
+
 
 Introduction
 ------------
@@ -44,6 +46,82 @@ rocBLAS is a high-level library provided by AMD that offers efficient GPU implem
 **Why AMD?**
 
 Simply put, AMD is awesome. While there is an abundance of CUDA (NVIDIA) resources available online, there are fewer guides for programming on AMD GPUs, and we wanted to fill that gap. AMD’s ROCm platform provides a powerful environment for GPU programming, and this blog aims to showcase how to effectively use it. Plus, working with AMD GPUs provides a broader perspective for GPU programming, going beyond the NVIDIA-centric focus that is so common in the industry.
+
+Matrix Multiplication with rocBLAS
+----------------------------------
+
+Writing efficient GPU kernels can be challenging, as it requires careful handling of memory access patterns, synchronization, and the coordination of thousands of parallel threads to exploit modern GPU architectures. For tasks like matrix multiplication, starting with optimized libraries such as `rocBLAS` is beneficial, as it provides high-level APIs that abstract away much of the complexity, enabling developers to focus on leveraging GPU acceleration without diving into the intricacies of kernel development.
+
+`rocBLAS` offers a set of optimized linear algebra routines specifically designed for AMD GPUs, making it an ideal choice for efficient matrix multiplication. By using `rocBLAS`, developers can achieve high performance without manually managing low-level GPU features, which can be time-consuming and error-prone. This guide will walk through how to use rocBLAS for implementing matrix multiplication in C, highlighting how to achieve efficient results by utilizing this powerful library.
+
+*From Basic Matmul to rocBLAS*
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Let's start with the basic matrix multiplication formula:
+
+.. math::
+
+   C = A \cdot B
+
+where :math:`A`, :math:`B`, and :math:`C` are matrices.
+
+However, rocBLAS uses a more sophisticated formula for its General Matrix Multiplication (GEMM) routine:
+
+.. math::
+
+   C = \alpha \cdot \text{op}(A) \cdot \text{op}(B) + \beta \cdot C
+
+In this formula:
+
+* :math:`A`: Matrix A of dimension :math:`m \times k`
+* :math:`B`: Matrix B of dimension :math:`k \times n`
+* :math:`C`: Resultant matrix of dimension :math:`m \times n`
+* :math:`\alpha`: Scalar multiplier applied to the product of A and B
+* :math:`\beta`: Scalar multiplier applied to matrix C before addition
+* :math:`\text{op}(X)`: Represents either :math:`X` or :math:`X^T`, depending on whether the matrix is transposed
+
+This enhanced formula allows for more flexible computations, including scaling the result (α), adding a scaled version of C to itself (β), and handling transposed matrices.
+
+*rocBLAS SGEMM API*
+^^^^^^^^^^^^^^^^^^^
+
+The rocBLAS library provides the `rocblas_sgemm` function for single-precision floating-point matrix multiplication. Here's a breakdown of its parameters:
+
+* `handle`: A `rocblas_handle` that manages the library context, created using `rocblas_create_handle()`.
+* `transA`, `transB`: Indicate whether matrices A and B are transposed (`rocblas_operation_transpose`) or not (`rocblas_operation_none`).
+* `m`, `n`, `k`: Dimensions of the matrices where `m` and `n` define the size of C, and `k` is the shared dimension between A and B.
+* `alpha`: Pointer to a scalar multiplier for matrices A and B.
+* `A`, `B`: Pointers to matrices A and B in GPU memory.
+* `lda`, `ldb`: Leading dimensions of matrices A and B, defining the stride between rows or columns.
+* `beta`: Pointer to a scalar multiplier for matrix C.
+* `C`: Pointer to matrix C in GPU memory, where the result is stored.
+* `ldc`: Leading dimension of matrix C, similar to `lda` and `ldb`.
+
+The general form of the `rocblas_sgemm` function call can be represented mathematically as:
+
+.. math::
+
+   \text{rocblas\_sgemm}(handle, transA, transB, m, n, k, \alpha, A, lda, B, ldb, \beta, C, ldc)
+
+And here's a high-level code snippet demonstrating how to call the `rocblas_sgemm` function:
+
+.. code-block:: c
+
+   rocblas_status rocblas_sgemm(
+       rocblas_handle handle,
+       rocblas_operation transA, rocblas_operation transB,
+       int m, int n, int k,
+       const float *alpha,
+       const float *A, int lda,
+       const float *B, int ldb,
+       const float *beta,
+       float *C, int ldc
+   );
+
+Using this API, you can perform complex matrix multiplications with a single function call, taking advantage of rocBLAS's optimized implementation for AMD GPUs.
+
+
+
 
 Benchmarking Setup and Code Organization
 ----------------------------------------
