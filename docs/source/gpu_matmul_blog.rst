@@ -13,7 +13,6 @@ Accelerating Matrix Multiplication on AMD GPUs with rocBLAS in C
 
  Get all of the code `in this repo <https://github.com/pebblesandweeds/gpu_matmul>`_.
 
-
 Introduction
 ------------
 
@@ -150,283 +149,234 @@ And here's a high-level code snippet demonstrating how to call the `rocblas_sgem
 
 Using this API, you can perform complex matrix multiplications with a single function call, taking advantage of rocBLAS's optimized implementation for AMD GPUs.
 
+*Putting It All Together: From Formulas to Implementation*
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+Our project demonstrates two approaches to implementing GPU-accelerated matrix multiplication: a high-level implementation using PyTorch and a lower-level implementation in C using rocBLAS directly. The PyTorch implementation abstracts away the complexities of GPU programming and the rocBLAS API. When we perform matrix multiplication using PyTorch's ``torch.matmul`` function, we're indirectly utilizing the rocBLAS library on AMD GPUs. PyTorch's backend automatically handles the intricate details of memory allocation, data transfer between CPU and GPU, and the construction of the appropriate rocBLAS function calls. This abstraction allows developers to focus on the higher-level aspects of their algorithms without worrying about the underlying GPU operations. However, this convenience comes at the cost of some flexibility and fine-grained control over the exact operations being performed.
 
+In contrast, our C implementation provides a more direct interface to the rocBLAS library, offering greater control but requiring more manual management. In this approach, we explicitly construct the rocBLAS API calls, handling details such as creating rocBLAS handles, specifying matrix operations (like transposition), and managing GPU memory directly. This lower-level implementation allows us to fine-tune parameters and potentially optimize performance for specific use cases. It also provides a clearer view of how the GEMM formula translates into actual GPU operations. While this method requires more code and a deeper understanding of GPU programming and the rocBLAS API, it offers the potential for highly optimized, application-specific implementations of matrix multiplication.
+
+Both approaches ultimately leverage the power of rocBLAS and the underlying GEMM formula to perform efficient matrix multiplications on the GPU. The choice between them depends on the specific needs of the project, balancing factors such as development time, required performance optimizations, and the level of control needed over the GPU operations. Whether using the high-level abstractions provided by PyTorch or the direct control offered by our C implementation, the end goal remains the same: harnessing the computational power of GPUs to perform fast, efficient matrix multiplications using the optimized algorithms provided by rocBLAS.
 
 Benchmarking Setup and Code Organization
 ----------------------------------------
 
-*Matrix Configuration and Benchmarking Strategy*
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+*Benchmarking Setup and Matrix Configuration*
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Our implementation performs matrix multiplication using the formula C = A x B, where both matrices A and B are square matrices of size N × N. We set N to a static size of 8,192, simplifying the implementation and laying the groundwork for future extensions to non-square matrices. By defining N with a preprocessor C macro (``#define N 8192``), we can enable aggressive compiler optimizations and ensure consistent runtime behavior.
-
-In this setup, we are not implementing separate kernels with varying block sizes because each matrix is fixed at N × N. A kernel typically refers to an optimized code block designed for flexible execution across varying data sizes or hardware conditions. Since N is static in our implementation, the complexity of multiple kernels is unnecessary, allowing us to focus on optimizing for a single, fixed configuration.
+Our implementation performs matrix multiplication using the formula C = A x B, where A and B are square matrices of size N × N. We've set N to 16,384, which provides a substantial workload to showcase GPU performance. This configuration is defined using a preprocessor C macro (``#define N 16384``), allowing for compiler optimizations and consistent runtime behavior.
 
 Memory Requirements
 '''''''''''''''''''
 
-With N = 8,192, each matrix contains 67,108,864 elements. Using 32-bit floating-point precision (often referred to as "single precision" or "FP32"), the size of each matrix (A, B, and C) is calculated as follows:
+With N = 16,384, each matrix contains 268,435,456 elements. Using 32-bit floating-point precision (FP32), the size of each matrix is:
 
-.. math::
+ .. math::
 
-   67,108,864 \times 4 \text{ bytes} = 268,435,456 \text{ bytes} \approx 268 \text{ MB}
+       268,435,456 \times 4 \text{ bytes} = 1,073,741,824 \text{ bytes} \approx 1.07 \text{ GB}
 
-This results in a total memory requirement of approximately 805 MB for all three matrices.
+This results in a total memory requirement of approximately 3.21 GB for all three matrices.
 
 Computational Complexity
 ''''''''''''''''''''''''
 
-Calculating the computational effort for matrix multiplication involves determining the total number of floating point operations (FLOPs) needed. When multiplying two :math:`N \times N` matrices, the resulting matrix is also :math:`N \times N` (:math:`N^2` elements). Each element is the result of a dot product between a row from the first matrix and a column from the second matrix. This involves:
+The computational effort for matrix multiplication of this size is substantial. The total number of floating point operations (FLOPs) is approximated by:
 
-- **Multiplications:** Each element requires multiplying :math:`N` pairs of numbers (one from the row and one from the column).
+    .. math::
 
-- **Additions:** The products from the multiplications are then summed together, requiring :math:`N - 1` additions (adding two numbers requires one addition, adding three numbers requires two additions, etc).
+       \text{Total FLOPs} = 2N^3 = 2 \times 16,384^3 = 8,796,093,022,208 \approx 8.8 \text{ TFLOPs}
 
-Thus, the total number of FLOPs is calculated as:
-
-.. math::
-
-   \text{Total FLOPs} = 2N^3 - N^2
-
-For large matrices, the :math:`2N^3` term contributes primarily to the total FLOPs, so it is often used to estimate the computational effort. This simplifies to:
-
-.. math::
-
-   \text{Total FLOPs} = 2N^3
-
-This simplification highlights how the computational effort grows with the size of the matrices. For our chosen matrix size of 8192 x 8192, this results in:
-
-.. math::
-
-   2 \times 8192^3 = 1,099,511,627,776 \approx 1.1 \text{ TFLOPs}
-
-This large number of operations underscores the computational intensity of large-scale matrix multiplication and highlights the importance of our optimization efforts. It is also important to note the distinction between FLOPs, which measure the total operations required, and FLOPS (Floating Point Operations Per Second), which indicate the system's performance capability.
-
-Cache Considerations
-''''''''''''''''''''
-
-We chose this large N value (8,192) to represent a realistic problem size for our matrix multiplication.  With our matrix size of approximately 268MB each, the entire problem (all three matrices) doesn't fit in L3 cache simultaneously, but significant portions of the working set can potentially reside in cache during computation. This creates a scenario where careful cache management becomes crucial for performance. Our setup allows us to:
-
-* Explore the effects of cache blocking and tiling optimizations
-* Observe how different algorithms balance cache utilization and main memory access
-* Understand performance characteristics that bridge cached and non-cached operations
-* Investigate how implementations handle a problem that doesn't neatly fit entirely in cache, but is also not so large as to make cache optimizations irrelevant
-
-This approach provides insight into algorithm design for real-world, cache-sensitive computations.
+This immense number of operations underscores the computational intensity of large-scale matrix multiplication and highlights the importance of GPU acceleration.
 
 Benchmarking Environment
 ''''''''''''''''''''''''
-For our benchmarks, we used an AWS c7a.32xlarge instance with the following specifications:
 
-- **Processor:** AMD EPYC 9R14
-- **Cores:** 2 sockets, 64 cores per socket (128 cores total, without simultaneous multithreading)
-- **L3 Cache:** 512MB
-
-The total working set size is about 805MB (three 268MB matrices), which is larger than the L3 cache. This setup allows us to observe how the cache handles large matrix multiplications and its impact on performance, as the entire workload cannot fit in the cache at once.  This setup ensures the dataset exceeds the cache size, providing a realistic assessment of the algorithm’s performance. 
+Our benchmarks are conducted on AWS instances equipped with AMD GPUs. This setup allows us to fully utilize the massive parallel processing capabilities of GPUs, which are particularly well-suited for the highly parallelizable task of matrix multiplication. By using GPUs, we can efficiently handle the large datasets and intensive computations required by our 16,384 × 16,384 matrix multiplication task.
 
 *Code Structure and Organization*
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Our matrix multiplication code is organized into separate modules for clarity and maintainability. The primary files are:
+Our project is structured to provide both a low-level C implementation using rocBLAS and a high-level PyTorch implementation. The full project structure can be found in the `README.md file <https://github.com/pebblesandweeds/gpu_matmul?tab=readme-ov-file#project-structure>`_.
 
-* `matmul_lib.c <https://github.com/pebblesandweeds/cpu_matmul/blob/dev/c/src/matmul_lib.c>`_: Contains the core matrix multiplication functions.
-* `main.c <https://github.com/pebblesandweeds/cpu_matmul/blob/dev/c/src/main.c>`_: Serves as the entry point, calling functions from ``matmul_lib.c``.
-* `Makefile <https://github.com/pebblesandweeds/cpu_matmul/blob/main/c/Makefile>`_: Specifies the build process using the ``gcc`` compiler with optimization flags ``CFLAGS = -mavx2 -fopenmp -O3 -march=native -I./include``
+The C implementation is organized into several key components:
 
-For a detailed overview of our project structure and how we implement various matrix multiplication methods and optimizations, refer to our `README.md <https://github.com/pebblesandweeds/cpu_matmul/blob/dev/README.md#project-structure>`_. The code snippets in this blog exclude `#pragma` directives for simplicity; the full code with parallel instructions is available in the repository.
+- ``main.c``: Contains the primary program logic and benchmarking code.
+- ``matrix_operations.c``: Implements the core matrix multiplication functions using rocBLAS.
+- ``utils.c``: Provides utility functions for memory management and data initialization.
+- ``timer.c``: Offers functions for precise timing of operations.
+- ``spot_check.c``: Includes functions for verifying the correctness of matrix multiplication results.
 
-Naive Matrix Multiplication 
----------------------------
+Header files in the ``include/`` directory declare the interfaces for these components, promoting modularity and ease of use.
 
-We begin with a basic matrix multiplication method in C to illustrate the fundamental algorithm and its inefficiencies. The following sections will provide a visual representation, the mathematical formula, and the implementation of this approach.
+The PyTorch implementation is contained in a single file, ``pytorch_matmul.py``, showcasing the simplicity and conciseness of high-level frameworks for GPU computations.
 
-*Visual and Formulaic Representation*
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+This organization allows for a clear comparison between the low-level, fine-grained control offered by the C implementation and the high-level abstraction provided by PyTorch, both leveraging GPU acceleration for matrix multiplication.
 
-The process is illustrated with an animation showing an 8x8 matrix multiplication. Each frame captures the computation of matrix :math:`C` elements as the sum of products from matrices :math:`A` and :math:`B`.
+PyTorch Implementation: Abstracting rocBLAS
+-------------------------------------------
 
-The corresponding mathematical operation is described by the formula:
+Key Implementation Details
+^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-.. math::
-    C_{ij} = \sum_{k=1}^{N} A_{ik} B_{kj}
+The PyTorch implementation showcases the simplicity of using a high-level framework for GPU-accelerated matrix multiplication. In this approach, rocBLAS is abstracted away, allowing us to focus on the core computation without dealing with low-level GPU programming details.
 
-*Naive Implementation in C*
-^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Matrix Setup
+~~~~~~~~~~~~
 
-Following this formula, our C code implementation employs three nested loops to perform the matrix multiplication. This basic method is straightforward but not optimized for performance, particularly with large matrices where the computational overhead becomes significant.
+.. code-block:: python
 
-.. code-block:: c
+   N = 16384
+   device = torch.device(f"cuda:{gpu_id}")
+   A = torch.empty(N, N, dtype=torch.float32, device=device).uniform_(-1,1)
+   B = torch.empty(N, N, dtype=torch.float32, device=device).uniform_(-1,1)
 
-   void matmul(float A[N][N], float B[N][N], float C[N][N]) {
-       for (int i = 0; i < N; i++) {
-           for (int j = 0; j < N; j++) {
-               for (int k = 0; k < N; k++) {
-                   C[i][j] += A[i][k] * B[k][j];
-               }
-           }
-       }
-   }
+This code initializes two 16384x16384 matrices with random values on the GPU.
 
-*Naive Matrix Multiplication Performance* 
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Matrix Multiplication
+~~~~~~~~~~~~~~~~~~~~~
 
-This naive approach effectively illustrates the link between algorithmic simplicity and computational inefficiency. With N set to 8,192, the computation involves approximately 1,099.51 billion floating-point operations. Despite the high-end CPU, our AWS c7a.32xlarge instance only achieves a performance of **~25 GFLOPS**.  This demonstrates the significant gap between the naive method's performance and the optimizations needed and sets the stage for exploring more advanced optimization techniques in the following sections.
- 
-Optimizing Matrix Multiplication
---------------------------------
+.. code-block:: python
 
-While the naive matrix multiplication implementation helps understand the basic algorithm, it is inefficient for large matrices.  It processes matrices in row-major order, the default in C, where rows of matrix A are multiplied by columns of matrix B. This access pattern leads to frequent cache misses because it disrupts spatial locality, as matrix elements are stored contiguously in memory. The mismatch between access patterns and memory layout results in poor cache utilization and increased memory latency, significantly impacting performance. 
+   torch.matmul(A, B)
 
-To address these inefficiencies, we use tiling, blocking, and loop unrolling. Tiling and blocking restructure computations to improve data locality by dividing matrices into smaller blocks, which enhances cache usage. Loop unrolling reduces the overhead of loop control by expanding loops, allowing more operations to be performed in parallel. These methods collectively improve data locality and make better use of CPU caches, significantly enhancing performance. For more detailed information on these techniques, see `Tiling and Blocking <https://en.wikipedia.org/wiki/Loop_nest_optimization#Tiling>`_ and `Loop Unrolling <https://en.wikipedia.org/wiki/Loop_unrolling>`_.
+This single line performs the entire matrix multiplication operation, leveraging PyTorch's optimized backend (which uses rocBLAS for AMD GPUs).
 
-*Optimized Implementation in C*
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+FLOPS Calculation
+~~~~~~~~~~~~~~~~~
 
-Our optimized matrix multiplication implementation leverages these techniques to minimize cache misses and maximize computational throughput. The following C code demonstrates the use of blocking, tiling, and unrolling to improve performance:
+.. code-block:: python
 
-.. code-block:: c
+   flops = 2 * N**3
+   tflops = (flops / run_time) / 1e12
 
-   #define BLOCK_SIZE 64 // Optimizes memory across L1/L2/L3; fetch data in chunks 
-   #define TILE_SIZE 32 // Improves CPUs data processing; balances CPU resources and data caching
-   #define UNROLL_FACTOR 4 // Increases parallel operations w/out overwhelming memory
+We calculate the number of floating-point operations as 2N³, where N is the matrix dimension. This accounts for N³ multiplications and N³ additions. We then convert this to TFLOPS (Tera FLOPS) by dividing by the runtime and 10¹².
 
-   void matmul_scalar(float A[N][N], float B[N][N], float C[N][N]) {
-   // Outer loops for block-wise operations
-    for (int i = 0; i < N; i += BLOCK_SIZE) {
-    for (int j = 0; j < N; j += BLOCK_SIZE) {
-    for (int k = 0; k < N; k += BLOCK_SIZE) {
-        // Inner loops for tile-wise operations within blocks
-        for (int ii = i; ii < i + BLOCK_SIZE && ii < N; ii += TILE_SIZE) {
-        for (int jj = j; jj < j + BLOCK_SIZE && jj < N; jj += TILE_SIZE) {
-        // Loop unrolling for innermost loop
-        for (int kk = k; kk < k + BLOCK_SIZE && kk < N; kk += UNROLL_FACTOR) {
-            float c_temp = C[ii][jj]; // Temp variable for accumulation
-            // Compute on tiles
-            for (int iii = ii; iii < ii + TILE_SIZE && iii < i + BLOCK_SIZE && iii < N; iii++) {
-            for (int jjj = jj; jjj < jj + TILE_SIZE && jjj < j + BLOCK_SIZE && jjj < N; jjj++) {
-                // Matrix multiplication within a tile
-                c_temp += A[iii][kk] * B[kk][jjj];
-            }
-            C[iii][jjj] = c_temp; // Store accumulated results
-            }
-        }
-        }
-        }
-    }
-    }
-    }
-   }
+Benchmark Strategy
+^^^^^^^^^^^^^^^^^^
 
-*Optimized Matrix Multiplication Performance*
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+The benchmark runs the matrix multiplication 25 times to get a stable performance number. The first run is typically slower because PyTorch needs to load and compile the rocBLAS kernel. Subsequent runs benefit from this initialization and show more consistent performance.
 
-By optimizing matrix multiplication, we achieve a significant performance boost. Our approach in the code above employs three key strategies: dividing matrices into cache-friendly blocks, further subdividing into efficiently processable tiles, and using loop unrolling for parallel operations. These techniques work together to ensure optimal data availability and CPU resource utilization.
+Results Summary
+^^^^^^^^^^^^^^^
 
-On the AWS c7a.32xlarge instance, this optimized implementation achieves approximately **500 GFLOPS**, representing more than a *20x increase* over the naive approach. This improvement stems from better use of the CPU's cache hierarchy, reduced memory access times, and increased instruction-level parallelism. While further scalar optimizations are possible, we're approaching the limits of what can be achieved without leveraging more advanced hardware features. The next step in boosting performance is to utilize vectorized operations, which we'll explore in the following section.
+The benchmark results show:
 
-Vectorized Matrix Multiplication
---------------------------------
+- First run: 1.74 TFLOPS (5.066478 seconds)
+- Subsequent runs: Consistently around 37.5 TFLOPS (0.234 seconds)
 
-*Scalar vs. Vectorized Operations*
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Example output:
 
-Scalar operations process data one element at a time, performing calculations sequentially. In contrast, vectorized operations use a Single Instruction, Multiple Data (SIMD) approach, processing multiple data elements simultaneously. This parallelism is implemented on CPUs through SIMD instructions, which leverage hardware capabilities to execute the same operation on multiple data points in a single instruction cycle.
+.. code-block:: text
 
-To write vectorized code, several elements are necessary:
+   Run     Time (s)        TFLOPS
+   ------------------------------
+   1       5.066478        1.74
+   2       0.234706        37.48
+   3       0.234577        37.50
+   ...
+   25      0.234543        37.50
 
-1. **SIMD Instructions**: SIMD instructions, such as AVX, enable parallel processing by applying the same operation across multiple data elements in a single instruction. This includes `Fused Multiply-Add (FMA) <https://en.wikipedia.org/wiki/Multiply%E2%80%93accumulate_operation>`_, which performs multiplication and addition together. For more information on SIMD, see `Wikipedia <https://en.wikipedia.org/wiki/SIMD>`_. 
+The stark difference between the first run and subsequent runs clearly demonstrates the overhead of initializing the GPU kernel. After initialization, we see stable performance at about 37.5 TFLOPS, showcasing the impressive computational capabilities of the AMD Instinct MI250X/MI250 GPU for large-scale matrix multiplication tasks.
 
-2. **Data Alignment**: Properly aligning data in memory is crucial for SIMD processing. Aligned data ensures that SIMD instructions can access data efficiently, avoiding costly misaligned memory accesses. Learn more about `Data Alignment <https://en.wikipedia.org/wiki/Data_structure_alignment>`_. 
+This PyTorch implementation demonstrates how high-level frameworks can abstract away the complexities of GPU programming while still delivering excellent performance for computational tasks like matrix multiplication.
 
-3. **Loop Unrolling**: Loop unrolling enhances vectorized operations by expanding loop iterations, reducing overhead, and allowing more operations to be performed in parallel. This technique improves the efficiency of SIMD instructions. More details can be found at `Loop Unrolling <https://en.wikipedia.org/wiki/Loop_unrolling>`_.
- 
-4. **Prefetching**: Prefetching involves loading data into the CPU cache before it is needed, reducing cache misses and ensuring that data is readily available when required. This technique optimizes memory access patterns and improves performance. Learn about `Prefetching <https://en.wikipedia.org/wiki/Cache_prefetching>`_. 
+C Implementation: Direct rocBLAS Integration
+--------------------------------------------
 
-5. **Transposition**: Matrix transposition rearranges data to improve access patterns, particularly for matrix operations. By aligning data in a more efficient layout, transposition reduces cache misses and speeds up computations. For more on this, see `Matrix Transposition <https://en.wikipedia.org/wiki/Transpose>`_. 
+Key Implementation Details
+^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-*Vectorized Implementation in C*
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+The C implementation provides a lower-level approach, directly integrating with rocBLAS for GPU-accelerated matrix multiplication. This method offers more control over the computation process but requires more detailed management of GPU resources.
 
-Below is the C implementation of matrix multiplication using vectorization techniques to enhance performance:
+Matrix Setup
+~~~~~~~~~~~~
 
 .. code-block:: c
 
-   void matmul_vectorized(float A[N][N], float B[N][N], float C[N][N]) {
-       // Data alignment (allocate memory for B_col)
-       float (*B_col)[N] = aligned_alloc(32, N * N * sizeof(float));
-       if (B_col == NULL) {
-           fprintf(stderr, "Memory allocation failed\n");
-           exit(1);
-       }
-       // Transposition (transpose B into B_col for better memory access patterns)
-       for (int j = 0; j < N; j += 32) {
-           for (int k = 0; k < N; k++) {
-               for (int jj = 0; jj < 32 && j + jj < N; jj++) {
-                   B_col[j+jj][k] = B[k][j+jj];
-               }
-           }
-       }
-       {
-           for (int j = 0; j < N; j += 32) {
-               for (int i = 0; i < N; i += 32) {
-                   // SIMD instructions (__m256 for 256-bit for SIMD operations)
-                   __m256 c[32][32];
-                   for (int ii = 0; ii < 32; ii++) {
-                       for (int jj = 0; jj < 32; jj++) {
-                           c[ii][jj] = _mm256_setzero_ps();
-                       }
-                   }
-                   for (int k = 0; k < N; k += 32) {
-                       // Prefetching (fetch data into cache before we use it)
-                       if (k + 128 < N) {
-                           for (int ii = 0; ii < 32; ii++) {
-                               _mm_prefetch((char*)&A[i+ii][k + 128], _MM_HINT_T1);
-                               _mm_prefetch((char*)&B_col[j+ii][k + 128], _MM_HINT_T1);
-                           }
-                       }
-                       __m256 a[32][4], b[32][4];
-                       for (int ii = 0; ii < 32; ii++) {
-                           for (int kk = 0; kk < 4; kk++) {
-                               a[ii][kk] = _mm256_loadu_ps(&A[i+ii][k+kk*8]);
-                               b[ii][kk] = _mm256_load_ps(&B_col[j+ii][k+kk*8]);
-                           }
-                       }
-                       // Loop unrolling (unroll inner loop for vector operations) and FMA (fused multiply-add)
-                       for (int ii = 0; ii < 32; ii++) {
-                           for (int jj = 0; jj < 32; jj++) {
-                               c[ii][jj] = _mm256_fmadd_ps(a[ii][0], b[jj][0], c[ii][jj]);
-                               c[ii][jj] = _mm256_fmadd_ps(a[ii][1], b[jj][1], c[ii][jj]);
-                               c[ii][jj] = _mm256_fmadd_ps(a[ii][2], b[jj][2], c[ii][jj]);
-                               c[ii][jj] = _mm256_fmadd_ps(a[ii][3], b[jj][3], c[ii][jj]);
-                           }
-                       }
-                   }
-                   // SIMD Instructions (final matrix multiplication reduction using SIMD)
-                   for (int ii = 0; ii < 32 && i + ii < N; ii++) {
-                       for (int jj = 0; jj < 32 && j + jj < N; jj++) {
-                           __m256 sum = c[ii][jj];
-                           __m128 sum_high = _mm256_extractf128_ps(sum, 1);
-                           __m128 sum_low = _mm256_castps256_ps128(sum);
-                           __m128 sum_all = _mm_add_ps(sum_high, sum_low);
-                           sum_all = _mm_hadd_ps(sum_all, sum_all);
-                           sum_all = _mm_hadd_ps(sum_all, sum_all);
-                           float result = _mm_cvtss_f32(sum_all);
-                           C[i+ii][j+jj] += result;
-                       }
-                   }
-               }
-           }
-       }
-       free(B_col);
-   }
+   size_t size = N * N * sizeof(float);
+   float *h_A, *h_B, *h_C, *h_A_trans, *h_B_trans, *h_C_trans;
+   float *d_A, *d_B, *d_C;
+   
+   // Allocate host memory
+   h_A = (float*)malloc(size);
+   h_B = (float*)malloc(size);
+   h_C = (float*)malloc(size);
+   
+   // Initialize matrices
+   initialize_matrices(h_A, h_B, N);
+   
+   // Allocate device memory
+   CHECK_HIP(hipMalloc(&d_A, size));
+   CHECK_HIP(hipMalloc(&d_B, size));
+   CHECK_HIP(hipMalloc(&d_C, size));
 
-*Performance Improvement*
-^^^^^^^^^^^^^^^^^^^^^^^^^
+This code allocates memory for matrices on both the host and device, and initializes the input matrices.
 
-The vectorized implementation greatly improves performance by applying the vectorized techniques described earlier. Data alignment optimizes memory access for SIMD operations, while transposition refines data layout to enhance access patterns for matrix operations. SIMD instructions and 256-bit AVX `YMM registers <https://en.wikipedia.org/wiki/Processor_register>`_ enable parallel processing of up to eight single-precision floating-point numbers per cycle, boosting data throughput. Prefetching reduces cache misses by pre-loading data, and loop unrolling enhances vector operation efficiency by cutting loop overhead and allowing more parallel instruction execution. These combined techniques leverage the CPU’s vectorization capabilities to deliver substantial performance gains.
+Matrix Multiplication
+~~~~~~~~~~~~~~~~~~~~~
 
-On the AWS c7a.32xlarge instance, this vectorized approach achieves approximately **3,000 GFLOPS**, representing a *6x performance increase* over the previously optimized scalar implementation.  This contrast underscores the efficiency of vectorized operations, which use SIMD to process multiple data elements simultaneously along with our other alighment optimizations.  This significant performance gain highlights the effectiveness of these advanced techniques in enhancing computational efficiency for large-scale matrix operations. 
+.. code-block:: c
+
+   rocblas_handle handle;
+   CHECK_ROCBLAS(rocblas_create_handle(&handle));
+   perform_matrix_multiplication(handle, d_A, d_B, d_C, N, NUM_RUNS);
+
+The matrix multiplication is performed using rocBLAS's `rocblas_sgemm` function, which is called within the `perform_matrix_multiplication` function.
+
+FLOPS Calculation
+~~~~~~~~~~~~~~~~~
+
+.. code-block:: c
+
+   double total_flops = 2.0 * N * N * N;
+   double tflops = total_flops / (seconds * 1e12);
+
+Similar to the PyTorch implementation, we calculate FLOPS as 2N³, accounting for N³ multiplications and N³ additions.
+
+Benchmark Strategy
+^^^^^^^^^^^^^^^^^^
+
+The benchmark runs the matrix multiplication 25 times, with the first run typically being slower due to the initial loading and compilation of the rocBLAS kernel. Subsequent runs show more consistent performance.
+
+Results Summary
+^^^^^^^^^^^^^^^
+
+The benchmark results show:
+
+- First run: 2.40 TFLOPS (3669.096191 ms)
+- Subsequent runs: Consistently around 37.5 TFLOPS (234 ms)
+
+Example output:
+
+.. code-block:: text
+
+   Run 1: Matrix multiplication time: 3669.096191 ms, Performance: 2.40 TFLOPS
+   Run 2: Matrix multiplication time: 234.542786 ms, Performance: 37.50 TFLOPS
+   Run 3: Matrix multiplication time: 234.463577 ms, Performance: 37.52 TFLOPS
+   ...
+   Run 25: Matrix multiplication time: 234.464218 ms, Performance: 37.52 TFLOPS
+
+The performance difference between the first and subsequent runs demonstrates the overhead of initializing the GPU kernel. After initialization, we see stable performance at about 37.5 TFLOPS, matching the performance of the PyTorch implementation.
+
+Accuracy Verification
+^^^^^^^^^^^^^^^^^^^^^
+
+Unlike the PyTorch implementation, this C implementation includes a spot-checking mechanism to verify the accuracy of the GPU computations:
+
+.. code-block:: c
+
+   spot_check(h_A, h_B, h_C_trans, N);
+
+This function performs random spot checks, comparing the GPU results with CPU-computed results to ensure accuracy within a specified threshold.
+
+The output confirms the accuracy:
+
+.. code-block:: text
+
+   Performing random spot checks between CPU and GPU results...
+   Success: All 50 spot checks passed within the relative error threshold.
+
+This C implementation with direct rocBLAS integration offers fine-grained control over the matrix multiplication process while achieving performance equivalent to the high-level PyTorch implementation. The addition of accuracy verification provides an extra layer of confidence in the results.
 
 Conclusion
 ----------
