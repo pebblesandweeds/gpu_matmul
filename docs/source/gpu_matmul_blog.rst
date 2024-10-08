@@ -50,7 +50,7 @@ Using PyTorch offers a high-level, user-friendly interface to perform matrix mul
 
 **Why rocBLAS?**
 
-rocBLAS is a high-level library provided by AMD that offers efficient GPU implementations of BLAS operations, including matrix multiplication. This is an ideal starting point for programming GPUs with C, as it abstracts many of the complexities of directly writing GPU kernels while still providing a hands-on experience with GPU programming. Writing custom GPU kernels is a complex task and out of scope for this blog. Starting with rocBLAS allows us to learn the fundamentals of GPU programming and gain performance improvements without diving into the intricacies of kernel development right away.
+rocBLAS is a high-level library provided by AMD that offers efficient GPU implementations of BLAS operations, including matrix multiplication. This is an ideal starting point for programming GPUs with C, as it abstracts many of the complexities of directly writing GPU kernels while still providing a hands-on experience with GPU programming.  Starting with rocBLAS allows us to learn the fundamentals of GPU programming and gain performance improvements without diving into the intricacies of kernel development right away.
 
 **Why AMD?**
 
@@ -66,19 +66,29 @@ rocBLAS offers a set of optimized linear algebra routines specifically designed 
 *Matrix Multiplication Formulas*
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Let's start with the basic matrix multiplication formula. For matrices :math:`A`, :math:`B`, and :math:`C` of dimensions :math:`m \times k`, :math:`k \times n`, and :math:`m \times n` respectively, we can express the multiplication element-wise as:
+Let's start with the basic matrix multiplication formula. Consider three matrices A, B, and C with the following dimensions:
+
+A --> :math:`m \times k`
+
+B --> :math:`k \times n`
+
+C --> :math:`m \times n`
+
+The matrix multiplication of A and B resulting in C can be expressed as:
+
+.. math::
+
+   C = A \cdot B
+
+On an element-wise level, this operation can be written as:
 
 .. math::
 
    c_{ij} = \sum_{p=1}^k a_{ip} b_{pj}
 
-where:
+Here, :math:`c_{ij}` represents the element in the i-th row and j-th column of C, calculated by taking the dot product of the i-th row of A and the j-th column of B. The indices i, j, and p range from 1 to m, n, and k respectively.
 
-- :math:`c_{ij}` is the element in the :math:`i`-th row and :math:`j`-th column of :math:`C`
-- :math:`a_{ip}` is the element in the :math:`i`-th row and :math:`p`-th column of :math:`A`
-- :math:`b_{pj}` is the element in the :math:`p`-th row and :math:`j`-th column of :math:`B`
-
-This formula shows that each element :math:`c_{ij}` of :math:`C` is calculated by taking the dot product of the :math:`i`-th row of :math:`A` and the :math:`j`-th column of :math:`B`.
+This formula demonstrates how each element of the resulting matrix C is computed through a series of multiplications and additions, utilizing corresponding elements from matrices A and B.
 
 While this basic formula is fundamental, many advanced linear algebra libraries, including rocBLAS, use a more sophisticated formula for their General Matrix Multiplication (GEMM) routine. This enhanced formula provides greater flexibility and efficiency in matrix computations.
 
@@ -94,55 +104,41 @@ Or in element-wise form:
 
    c_{ij} = \alpha \cdot \sum_{p=1}^k \text{op}(a)_{ip} \cdot \text{op}(b)_{pj} + \beta \cdot c_{ij}
 
-These formulas might look intimidating at first, but let's break them down step by step:
+These formulas might look intimidating at first, but let's break them down:
 
-The :math:`C` on the right side: 
-This :math:`C` represents the initial values in the result matrix. By including it on the right side, we can update existing values instead of always starting from scratch. This is useful in many algorithms that build up a result over multiple steps.
+* **C on both sides:** :math:`C` The :math:`C` on the right side represents the initial values in the result matrix. This allows for updating existing values instead of starting from scratch, useful in algorithms that build up results over multiple steps. The final step adds this scaled original C (:math:`\beta \cdot C`) to the new multiplication result.
 
-:math:`\alpha` and :math:`\beta`:
-These are simple numbers used to adjust the importance of different parts of the calculation. Think of them as volume knobs:
-- :math:`\alpha` controls how much of the new multiplication (A·B) we include
-- :math:`\beta` controls how much of the original C we keep
+* **α and β:** :math:`\alpha` and :math:`\beta` These scalar values adjust the importance of different parts of the calculation. Think of them as volume knobs - :math:`\alpha` controls the contribution of the new multiplication (A·B), while :math:`\beta` determines how much of the original C to retain. This allows for fine-tuning the balance between new and existing calculations.
 
-:math:`\text{op}(A)` and :math:`\text{op}(B)` (or :math:`\text{op}(a)_{ip}` and :math:`\text{op}(b)_{pj}` in the element-wise form):
-Sometimes in matrix operations, we need to flip a matrix on its diagonal (transpose it). Instead of creating a new, flipped matrix, which would take up more memory, we can just pretend we flipped it. That's what :math:`\text{op}()` does - it either leaves the matrix (or element) as-is or treats it as if it were flipped, depending on what we need.
+* **op(A) and op(B):** :math:`\text{op}(A)` and :math:`\text{op}(B)` The :math:`\text{op}()` function allows for matrix transposition without creating a new matrix. It either leaves the matrix as-is or treats it as if it were transposed, depending on the operation needed. This applies to both the matrix form (:math:`\text{op}(A)`, :math:`\text{op}(B)`) and the element-wise form (:math:`\text{op}(a)_{ip}`, :math:`\text{op}(b)_{pj}`). The first step in the calculation is to multiply these potentially transposed matrices: :math:`\text{op}(A) \cdot \text{op}(B)`.
 
-Here's a step-by-step breakdown of what this formula does:
+This formula offers greater flexibility than the basic matrix multiplication:
 
-a) Multiply A and B (with possible flipping): :math:`\text{op}(A) \cdot \text{op}(B)` or :math:`\sum_{p=1}^k \text{op}(a)_{ip} \cdot \text{op}(b)_{pj}`
-b) Adjust the importance of this multiplication: :math:`\alpha \cdot (\text{op}(A) \cdot \text{op}(B))` or :math:`\alpha \cdot \sum_{p=1}^k \text{op}(a)_{ip} \cdot \text{op}(b)_{pj}`
-c) Adjust the importance of the original C: :math:`\beta \cdot C` or :math:`\beta \cdot c_{ij}`
-d) Add these together to get the final C: :math:`\alpha \cdot (\text{op}(A) \cdot \text{op}(B)) + \beta \cdot C` or :math:`\alpha \cdot \sum_{p=1}^k \text{op}(a)_{ip} \cdot \text{op}(b)_{pj} + \beta \cdot c_{ij}`
+* It can handle transposed matrices without actually transposing them in memory (:math:`\text{op}()`)
+* It provides options for scaling (:math:`\alpha`) and accumulation (:math:`\beta \cdot C`)
 
-This formula is more flexible than the basic one because:
-- It can easily incorporate existing calculations (:math:`\beta \cdot C`)
-- It can adjust the balance between new and existing calculations (:math:`\alpha` and :math:`\beta`)
-- It can handle flipped matrices without actually flipping them in memory (:math:`\text{op}()`)
+While the full flexibility of this formula is valuable in scientific computing and certain specialized machine learning applications, in typical deep learning scenarios, we often use simplified versions. For standard neural network operations:
 
-This flexibility makes it useful for a wide range of complex calculations in scientific computing, machine learning, and other fields that work with large sets of numbers.
+* :math:`\alpha` is usually set to 1
+* :math:`\beta` is typically 0 for forward passes (ignoring the existing C), or 1 for operations like gradient accumulation
+
+The ability to handle transposed matrices efficiently is particularly useful in deep learning, especially for operations like weight transposition in fully connected layers or certain convolutional operations.
+
+This GEMM formulation allows libraries like rocBLAS to provide a single, highly optimized routine that can be used in various contexts, from basic matrix multiplication to more complex linear algebra operations, catering to both deep learning and broader scientific computing needs.
 
 *rocBLAS SGEMM API*
 ^^^^^^^^^^^^^^^^^^^
 
-The rocBLAS library provides the `rocblas_sgemm` function for single-precision floating-point matrix multiplication. Here's a breakdown of its parameters:
+The rocBLAS library provides the rocblas_sgemm function for single-precision floating-point matrix multiplication. Here's a breakdown of its key parameters:
 
-* `handle`: A `rocblas_handle` that manages the library context, created using `rocblas_create_handle()`.
-* `transA`, `transB`: Indicate whether matrices A and B are transposed (`rocblas_operation_transpose`) or not (`rocblas_operation_none`).
-* `m`, `n`, `k`: Dimensions of the matrices where `m` and `n` define the size of C, and `k` is the shared dimension between A and B.
-* `alpha`: Pointer to a scalar multiplier for matrices A and B.
-* `A`, `B`: Pointers to matrices A and B in GPU memory.
-* `lda`, `ldb`: Leading dimensions of matrices A and B, defining the stride between rows or columns.
-* `beta`: Pointer to a scalar multiplier for matrix C.
-* `C`: Pointer to matrix C in GPU memory, where the result is stored.
-* `ldc`: Leading dimension of matrix C, similar to `lda` and `ldb`.
+* handle: A rocblas_handle that manages the library context, created using rocblas_create_handle().
+* transA, transB: Indicate whether matrices A and B are transposed (rocblas_operation_transpose) or not (rocblas_operation_none).
+* m, n, k: Dimensions of the matrices where m and n define the size of C, and k is the shared dimension between A and B.
+* alpha, beta: Pointers to scalar multipliers for the matrix product and C, respectively.
+* A, B, C: Pointers to matrices A, B, and C in GPU memory.
+* lda, ldb, ldc: Leading dimensions of matrices A, B, and C, defining the stride between rows or columns.
 
-The general form of the `rocblas_sgemm` function call can be represented mathematically as:
-
-.. math::
-
-   \text{rocblas\_sgemm}(handle, transA, transB, m, n, k, \alpha, A, lda, B, ldb, \beta, C, ldc)
-
-And here's a high-level code snippet demonstrating how to call the `rocblas_sgemm` function:
+Here's a high-level code snippet demonstrating how to call the rocblas_sgemm function:
 
 .. code-block:: c
 
@@ -159,14 +155,28 @@ And here's a high-level code snippet demonstrating how to call the `rocblas_sgem
 
 Using this API, you can perform complex matrix multiplications with a single function call, taking advantage of rocBLAS's optimized implementation for AMD GPUs.
 
-*Putting It All Together: From Formulas to Implementation*
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+*Formulas to Implementation*
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Our project demonstrates two approaches to implementing GPU-accelerated matrix multiplication: a high-level implementation using PyTorch and a lower-level implementation in C using rocBLAS directly. The PyTorch implementation abstracts away the complexities of GPU programming and the rocBLAS API. When we perform matrix multiplication using PyTorch's ``torch.matmul`` function, we're indirectly utilizing the rocBLAS library on AMD GPUs. PyTorch's backend automatically handles the intricate details of memory allocation, data transfer between CPU and GPU, and the construction of the appropriate rocBLAS function calls. This abstraction allows developers to focus on the higher-level aspects of their algorithms without worrying about the underlying GPU operations. However, this convenience comes at the cost of some flexibility and fine-grained control over the exact operations being performed.
+Our project demonstrates two approaches to implementing GPU-accelerated matrix multiplication, both leveraging the GEMM formula and rocBLAS:
 
-In contrast, our C implementation provides a more direct interface to the rocBLAS library, offering greater control but requiring more manual management. In this approach, we explicitly construct the rocBLAS API calls, handling details such as creating rocBLAS handles, specifying matrix operations (like transposition), and managing GPU memory directly. This lower-level implementation allows us to fine-tune parameters and potentially optimize performance for specific use cases. It also provides a clearer view of how the GEMM formula translates into actual GPU operations. While this method requires more code and a deeper understanding of GPU programming and the rocBLAS API, it offers the potential for highly optimized, application-specific implementations of matrix multiplication.
+1. PyTorch Implementation:
+   PyTorch's ``torch.matmul`` function abstracts the complexities of GPU programming and the rocBLAS API. It internally utilizes the GEMM formula and rocBLAS on AMD GPUs, handling memory allocation, data transfer, and API calls automatically. This high-level approach allows developers to focus on algorithm design without managing GPU-specific details.
 
-Both approaches ultimately leverage the power of rocBLAS and the underlying GEMM formula to perform efficient matrix multiplications on the GPU. The choice between them depends on the specific needs of the project, balancing factors such as development time, required performance optimizations, and the level of control needed over the GPU operations. Whether using the high-level abstractions provided by PyTorch or the direct control offered by our C implementation, the end goal remains the same: harnessing the computational power of GPUs to perform fast, efficient matrix multiplications using the optimized algorithms provided by rocBLAS.
+2. Direct C Implementation with rocBLAS:
+   Our C implementation directly interfaces with rocBLAS, providing greater control over the computation process. We explicitly construct rocBLAS API calls, manage GPU memory, and handle matrix operations. This approach translates the GEMM formula:
+
+   :math:`C = \alpha \cdot \text{op}(A) \cdot \text{op}(B) + \beta \cdot C`
+
+   into a rocBLAS function call:
+
+   .. code-block:: c
+
+      rocblas_sgemm(handle, transA, transB, m, n, k, alpha, A, lda, B, ldb, beta, C, ldc)
+
+   This lower-level implementation offers fine-grained control and the potential for use-case specific optimizations, at the cost of increased complexity.
+
+Both methods harness the power of rocBLAS and the GEMM formula for efficient GPU-accelerated matrix multiplication. The choice between them depends on the balance needed between abstraction and control, development time, and specific performance requirements.
 
 Benchmarking Setup and Code Organization
 ----------------------------------------
