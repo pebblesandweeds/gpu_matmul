@@ -68,11 +68,11 @@ rocBLAS offers a set of optimized linear algebra routines specifically designed 
 
 Let's start with the basic matrix multiplication formula. Consider three matrices A, B, and C with the following dimensions:
 
-A --> :math:`m \times k`
+.. math::
 
-B --> :math:`k \times n`
-
-C --> :math:`m \times n`
+    A = m \times k \\
+    B = k \times n \\
+    C = m \times n
 
 The matrix multiplication of A and B resulting in C can be expressed as:
 
