@@ -1,0 +1,69 @@
+/* Custom font and size for code blocks */
+.highlight pre {
+    font-family: 'JetBrains Mono', 'Fira Code', 'Source Code Pro', 'Menlo', 'Consolas', 'DejaVu Sans Mono', 'Courier New', Courier, monospace;
+    font-size: 12px; /* Adjust the font size as needed */
+}
+
+/* Reduce padding on left and right sides */
+div.document {
+    padding-left: 8px;  /* TWEAK: Reduce this value to decrease left padding */
+    padding-right: 8px; /* TWEAK: Reduce this value to decrease right padding */
+}
+
+/* Ensure content width adjusts with padding changes */
+div.documentwrapper {
+    width: 100%;
+}
+
+/* Adjust body content if needed */
+div.body {
+    max-width: none; /* Remove any max-width constraints */
+    padding-left: 8px;  /* TWEAK: Adjust to fine-tune left content padding */
+    padding-right: 8px; /* TWEAK: Adjust to fine-tune right content padding */
+}
+
+/* Style the Highlights admonition */
+div.admonition-highlights {
+    background-color: #f0f8ff; /* Light blue background */
+    border-left: 5px solid #4682b4; /* Steel blue left border */
+    padding: 10px 15px;
+    margin: 20px 0;
+    border-radius: 4px;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+}
+
+.admonition-highlights .admonition-title {
+    font-family: 'Arial', sans-serif; /* Change font */
+    font-size: 1.2em;
+    color: #000000; /* Steel blue color */
+    margin-bottom: 10px;
+    font-weight: bold;
+}
+
+.admonition-highlights p {
+    font-family: 'Georgia', serif; /* Change font for content */
+    font-size: 1em;
+    line-height: 1.6;
+    color: #333;
+}
+
+/* Updated styles for code blocks with darker background */
+div.highlight {
+    background-color: #f0f0f0 !important; /* Darker off-white/light gray background */
+}
+
+pre {
+    background-color: #f0f0f0 !important; /* Darker off-white/light gray background */
+    border: 1px solid #e0e0e0; /* Slightly darker border to match */
+    padding: 12px;
+    border-radius: 3px;
+    line-height: 1.5;
+    overflow-x: auto;
+}
+
+code {
+    background-color: #f0f0f0 !important; /* Darker off-white/light gray background */
+    color: #333333;
+    padding: 2px 4px;
+    font-size: 90%;
+}
