@@ -131,14 +131,14 @@ The rocBLAS GEMM formula extends basic matrix multiplication with flexible opera
 
 The `rocblas_sgemm` function in the rocBLAS library performs single-precision floating-point matrix multiplication (SGEMM). Here's a breakdown of its key components for those unfamiliar with GPU programming:
 
-* **handle**: A `rocblas_handle` manages the internal state and resources of the rocBLAS library and is first created with `rocblas_create_handle()` before performing any operations. This handle is then passed to functions to maintain the necessary context for executing GPU computations.
-* **transA**, **transB**: These parameters determine whether matrices A and B are used as-is or transposed before multiplication, where transposing rearranges the matrix so that rows become columns. Use `rocblas_operation_none` to leave the matrix unchanged, or `rocblas_operation_transpose` to use the transposed version.
-* **m**, **n**, **k**: These specify the sizes of the matrices involved. `m` and `n` are the number of rows and columns of matrix C, the result matrix. `k` represents the number of columns in matrix A and rows in matrix B, which must match for the multiplication to be valid.
-* **alpha**, **beta**: These scalars control how the result of `A * B` is combined with matrix C. alpha scales the product of `A * B`, while beta scales the existing values in C before adding the result. 
-* **A**, **B**, **C**: These are pointers to the matrices stored in GPU memory. The function uses these pointers to access the data for matrices A, B, and C.
-* **lda**, **ldb**, **ldc**: These parameters define the leading dimensions of matrices A, B, and C. In simple terms, they tell the function how the data is laid out in memory, especially when matrices are stored in a row-major or column-major format. This ensures the function reads the data correctly.
+* **handle**: A `rocblas_handle` manages the internal state and resources of the rocBLAS library and is created with `rocblas_create_handle()` before performing any operations.
+* **transA**, **transB**: These parameters specify whether matrices A and B should be transposed before multiplication. Use `rocblas_operation_none` for no transpose or `rocblas_operation_transpose` to transpose the matrix.
+* **m**, **n**, **k**: These define the dimensions of the matrices. `m` and `n` are the rows and columns of matrix C (the result), while `k` is the shared dimension between A and B.
+* **alpha**, **beta**: These scalar values control how the result of `A * B` is combined with matrix C. `alpha` scales `A * B`, and `beta` scales any existing values in matrix C.
+* **A**, **B**, **C**: These are **pointers to the matrices in GPU memory**. The matrices (A, B, and C) exist on the host initially, but they must be copied to the GPU using device pointers (`d_A`, `d_B`, `d_C`). These device pointers are passed to `rocblas_sgemm`, not the host pointers.
+* **lda**, **ldb**, **ldc**: These are the leading dimensions of matrices A, B, and C, which define the stride between rows or columns, ensuring proper memory layout.
 
-Here's a high-level code snippet demonstrating how to call the rocblas_sgemm function:
+Here’s a high-level code snippet showing how to call `rocblas_sgemm`:
 
 .. code-block:: c
 
@@ -146,20 +146,20 @@ Here's a high-level code snippet demonstrating how to call the rocblas_sgemm fun
                  transA, transB,
                  m, n, k,
                  &alpha,
-                 A, lda,
-                 B, ldb,
+                 d_A, lda,
+                 d_B, ldb,
                  &beta,
-                 C, ldc);
+                 d_C, ldc);
 
    // where:
    // handle:     rocblas_handle managing the rocBLAS context.
    // transA/B:   rocblas_operation_none (no transpose) or rocblas_operation_transpose (use the transposed matrix).
    // m, n, k:    Matrix dimensions; m = rows of C, n = cols of C, k = shared dimension of A and B.
    // alpha:      Scalar pointer, scales A * B.
-   // A, B:       Pointers to matrices A and B in GPU memory.
+   // d_A, d_B:       Pointers to matrices A and B in GPU memory.
    // lda/ldb:    Leading dimensions of A and B (stride between rows/cols).
    // beta:       Scalar pointer, scales existing values in C.
-   // C:          Pointer to output matrix C in GPU memory.
+   // d_C:          Pointer to output matrix C in GPU memory.
    // ldc:        Leading dimension of matrix C.
 
 Using this API, you can perform complex matrix multiplications with a single function call, taking advantage of rocBLAS's optimized implementation for AMD GPUs.
@@ -169,83 +169,82 @@ Using this API, you can perform complex matrix multiplications with a single fun
 
 Our project code demonstrates two approaches to implementing GPU-accelerated matrix multiplication, both leveraging the GEMM formula and rocBLAS:
 
-1. `PyTorch Implementation <https://github.com/pebblesandweeds/gpu_matmul/blob/main/pytorch/pytorch_matmul.py>`_:
-   PyTorch's ``torch.matmul`` function abstracts the complexities of GPU programming and the rocBLAS API (assuming you have Pytorch installed with ROCm support). It internally utilizes the GEMM formula and rocBLAS on AMD GPUs, handling memory allocation, data transfer, and API calls automatically. This high-level approach allows developers to focus on algorithm design without managing GPU-specific details.
+`PyTorch Implementation <https://github.com/pebblesandweeds/gpu_matmul/blob/main/pytorch/pytorch_matmul.py>`_:
+PyTorch's ``torch.matmul`` function simplifies GPU programming by abstracting the complexities of the rocBLAS API (assuming PyTorch is installed with ROCm support). It internally uses the GEMM formula and rocBLAS on AMD GPUs, automatically managing memory allocation, data transfers, and API calls. This high-level approach allows developers to focus on algorithm design without dealing with low-level GPU details.
 
-2. `Direct C Implementation with rocBLAS <https://github.com/pebblesandweeds/gpu_matmul/blob/main/c/src/main.c>`_:
-   Our C implementation directly `interfaces with rocBLAS <https://github.com/pebblesandweeds/gpu_matmul/blob/main/c/src/matrix_operations.c>`_, providing greater control over the computation process. We explicitly construct rocBLAS API calls, manage GPU memory, and handle matrix operations. This approach translates the GEMM formula:
+`Direct C Implementation with rocBLAS <https://github.com/pebblesandweeds/gpu_matmul/blob/main/c/src/main.c>`_:
+Our C implementation directly interfaces with the rocBLAS API, providing greater control over the entire computation process. In this case, we manually handle rocBLAS API calls, GPU memory management, and matrix operations. We translate the GEMM formula:
 
-   :math:`C = \alpha \cdot \text{op}(A) \cdot \text{op}(B) + \beta \cdot C`
+:math:`C = \alpha \cdot \text{op}(A) \cdot \text{op}(B) + \beta \cdot C`
 
-   into our rocBLAS function call:
+into the following rocBLAS function call:
 
-   .. code-block:: c
+.. code-block:: c
 
-      CHECK_ROCBLAS(rocblas_sgemm(handle,
-                                    rocblas_operation_none, rocblas_operation_none,
-                                    N, N, N, &alpha, d_A, N, d_B, N, &beta, d_C, N)); 
+   CHECK_ROCBLAS(rocblas_sgemm(handle,
+                               rocblas_operation_none, rocblas_operation_none,
+                               N, N, N, &alpha, d_A, N, d_B, N, &beta, d_C, N));
 
-While parameters are available in the rocBLAS API to perform on-the-fly transposition, our implementation takes a different approach for optimal performance:
+In this example, matrices `A`, `B`, and `C` are initially in host memory and need to be `moved to GPU memory <https://github.com/pebblesandweeds/gpu_matmul/blob/12a4b4cad727afe1b0fe2cb633933d4af1cfaab1/c/src/timer.c#L4>`_ as `d_A`, `d_B`, and `d_C`. These device pointers are then passed to the `rocblas_sgemm` function instead of the host pointers.
 
-   - In C, matrices A and B are typically initialized in row-major order. Therefore, transposing these matrices is generally necessary for optimal performance with rocBLAS, which expects column-major order for best results.
-   - We transpose matrices A and B using a `separate function <https://github.com/pebblesandweeds/gpu_matmul/blob/main/c/src/matrix_operations.c>`_ before calling `rocblas_sgemm`.
-   - This pre-transposition step consistently yields better performance compared to using the transpose flags during the SGEMM operation.
+We work with square matrices of size N x N, which is why we use 'N' for the dimensions in the rocBLAS API call. Similarly, the leading dimensions `lda`, `ldb`, and `ldc` are all set to 'N' since the matrices are stored contiguously.
 
-The GEMM formula serves as the foundation for both our PyTorch and C implementations, each offering distinct advantages. PyTorch abstracts GPU complexities, allowing rapid development. Our C implementation provides finer control, demonstrating the performance benefits of pre-transposing matrices before rocBLAS calls. These approaches illustrate how the same underlying formula can be adapted to different programming paradigms and performance needs in GPU-accelerated matrix multiplication.
+To optimize performance, we transpose matrices A and B before passing them to GEMM. While matrices in C are typically initialized in row-major order, rocBLAS performs better with column-major order. We use a separate function to handle the transposition, as this consistently outperforms using the transpose flags during the `rocblas_sgemm` call.
 
-Benchmarking Setup and Code Organization
-----------------------------------------
+Key variables in the API call:
 
-*Matrix Configuration*
-^^^^^^^^^^^^^^^^^^^^^^
+- ``handle``: The rocBLAS library handle.
+- ``rocblas_operation_none``: Specifies no transposition for input matrices.
+- ``N``: The dimensions of our square matrices.
+- ``alpha`` and ``beta``: Scalar multipliers in the GEMM formula.
+- ``d_A``, ``d_B``, ``d_C``: Pointers to device (GPU) memory for matrices A, B, and C.
 
-Our implementation performs matrix multiplication using the formula C = A x B, where A and B are square matrices of size N × N. We've set N to 16,384, which provides a substantial workload to showcase our GPU's performance. This configuration is defined using a preprocessor C macro (``#define N 16384``), allowing for compiler optimizations and consistent runtime behavior.
+The GEMM formula serves as the foundation for both our PyTorch and C implementations. PyTorch abstracts the complexity of GPU programming, enabling rapid development, while our C implementation offers finer control, demonstrating performance improvements by pre-transposing matrices. These approaches illustrate how the same underlying formula can be applied across different programming paradigms to meet specific performance needs in GPU-accelerated matrix multiplication.
 
-Memory Requirements
-'''''''''''''''''''
+Matrix Setup and Code Breakdown
+-------------------------------
 
-With N = 16,384, each matrix contains 268,435,456 elements. Using 32-bit floating-point precision (FP32), the size of each matrix is:
+Matrix Setup For Benchmarking
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
- .. math::
+Our matrix multiplication operates on square matrices `A` and `B`, both of size N × N. For benchmarking, we've set N to 16,384, which provides a significant workload to demonstrate GPU performance. This configuration is defined using a preprocessor macro (``#define N 16384``), enabling consistent behavior and compiler optimizations.
+
+With N = 16,384, each matrix has 268,435,456 elements. Using 32-bit floating-point precision (FP32), the size of each matrix is:
+
+.. math::
 
        268,435,456 \times 4 \text{ bytes} = 1,073,741,824 \text{ bytes} \approx 1.07 \text{ GB}
 
-This results in a total memory requirement of approximately 3.21 GB for all three matrices.
+Thus, the total memory requirement for three matrices (A, B, and C) is around 3.21 GB.
 
-Computational Complexity
-''''''''''''''''''''''''
+The computation involved in multiplying two matrices of this size is intensive. The total number of floating-point operations (FLOPs) required is:
 
-The computational effort for matrix multiplication of this size is substantial. The total number of floating point operations (FLOPs) is approximated by:
-
-    .. math::
+.. math::
 
        \text{Total FLOPs} = 2N^3 = 2 \times 16,384^3 = 8,796,093,022,208 \approx 8.8 \text{ TFLOPs}
 
-This immense number of operations underscores the computational intensity of large-scale matrix multiplication and highlights the importance of GPU acceleration.
+It's important to note that our benchmarks focus solely on the GPU performance during matrix multiplication. We are **not** including the time spent on matrix initialization, the transfer of matrices between host and device memory, or the transfer of results back to the host. This isolation ensures a more accurate representation of the GPU's computational performance.
 
-Benchmarking Environment
-''''''''''''''''''''''''
+We conducted benchmarks on a system with dual AMD EPYC 7713 64-Core Processors, 1 TB RAM, and a single AMD MI250 GPU to handle the matrix multiplication. Although the CPU handles tasks like matrix initialization and transposition, the benchmarks focus exclusively on the GPU's contribution during the matrix multiplication phase. This approach allows us to achieve consistent comparisons between different implementations, reporting the achieved TFLOPs for the multiplication step.
 
-Our benchmarks run on a system with dual AMD EPYC 7713 64-Core Processors and 1 TB RAM, utilizing a single AMD MI250 GPU for matrix multiplication. While the CPUs handle matrix initialization and transposition in our C implementation, we focus our measurements on the GPU's performance during 16,384 × 16,384 matrix multiplications. This approach, used in both our PyTorch and C implementations, isolates GPU performance and allows for consistent comparison across different programming paradigms. We report the achieved TFLOPs for the GPU-accelerated multiplication phase, making the host system's specifications less relevant to the benchmark results.
+Project Structure and Code Organization
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-*Code Structure and Organization*
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Our project includes both a low-level C implementation using rocBLAS and a high-level PyTorch implementation, enabling a clear comparison between the two approaches.
 
-Our project is structured to provide both a low-level C implementation using rocBLAS and a high-level PyTorch implementation. The full project structure can be found in the `README.md file <https://github.com/pebblesandweeds/gpu_matmul?tab=readme-ov-file#project-structure>`_.
+In the C implementation, the code is divided into the following key components:
 
-The C implementation is organized into several key components:
+- ``main.c``: Contains the primary logic for benchmarking and running the multiplication.
+- ``matrix_operations.c``: Implements the matrix multiplication logic using rocBLAS.
+- ``utils.c``: Provides functions for memory management and data initialization.
+- ``timer.c``: Includes functions for accurate timing of matrix operations.
+- ``spot_check.c``: Verifies the correctness of the matrix multiplication results.
 
-- ``main.c``: Contains the primary program logic and benchmarking code.
-- ``matrix_operations.c``: Implements the core matrix multiplication functions using rocBLAS.
-- ``utils.c``: Provides utility functions for memory management and data initialization.
-- ``timer.c``: Offers functions for precise timing of operations.
-- ``spot_check.c``: Includes functions for verifying the correctness of matrix multiplication results.
+Header files in the ``include/`` directory define the interfaces for these components, ensuring modularity and reusability.
 
-Header files in the ``include/`` directory declare the interfaces for these components, promoting modularity and ease of use.
+The PyTorch implementation is contained in a single file, ``pytorch_matmul.py``, which abstracts away the complexities of GPU memory management and API calls. This high-level framework simplifies the process of performing matrix multiplication on GPUs, making development faster and more convenient.
 
-The PyTorch implementation is contained in a single file, ``pytorch_matmul.py``, showcasing the simplicity and conciseness of high-level frameworks for GPU computations.
-
-This organization allows for a clear comparison between the low-level, fine-grained control offered by the C implementation and the high-level abstraction provided by PyTorch, both leveraging GPU acceleration for matrix multiplication.
+The project structure highlights the trade-offs between the detailed control offered by the C implementation and the simplicity and ease of PyTorch. Both approaches utilize GPU acceleration, but they offer different levels of flexibility depending on the user’s needs.
 
 PyTorch Implementation: Abstracting rocBLAS
 -------------------------------------------
@@ -265,7 +264,7 @@ Matrix Setup
    A = torch.empty(N, N, dtype=torch.float32, device=device).uniform_(-1,1)
    B = torch.empty(N, N, dtype=torch.float32, device=device).uniform_(-1,1)
 
-This code initializes two 16384x16384 matrices with random values on the GPU.
+This code initializes two 16384x16384 matrices with random values directly on the GPU by specifying the `device=device` argument. PyTorch internally handles allocating and transferring these matrices to the GPU, so `A` and `B` reside in GPU memory right from the start. No explicit host-to-device memory transfer is needed, as would be required in lower-level frameworks.
 
 Matrix Multiplication
 ^^^^^^^^^^^^^^^^^^^^^
@@ -281,10 +280,15 @@ FLOPS Calculation
 
 .. code-block:: python
 
-   flops = 2 * N**3
-   tflops = (flops / run_time) / 1e12
+   torch.cuda.synchronize()
+   start = time.perf_counter()
+   torch.matmul(A, B)
+   torch.cuda.synchronize()
+   end = time.perf_counter()
+   run_time = end - start
+   tflops = (2 * N**3 / run_time) / 1e12
 
-We calculate the number of floating-point operations as 2N³, where N is the matrix dimension. This accounts for N³ multiplications and N³ additions. We then convert this to TFLOPS (Tera FLOPS) by dividing by the runtime and 10¹².
+To accurately measure `run_time`, we use `torch.cuda.synchronize()` to ensure that the matrix multiplication is fully completed on the GPU before and after calling `torch.matmul`. This prevents asynchronous execution from affecting the timing. We use `time.perf_counter()` from the Python standard library for high-resolution timing, but it must be combined with GPU synchronization to reflect only the time spent on the actual computation, not the queuing of operations.
 
 Benchmark Strategy
 ^^^^^^^^^^^^^^^^^^
@@ -311,7 +315,7 @@ Example output:
    ...
    25      0.234543        37.50
 
-The stark difference between the first run and subsequent runs clearly demonstrates the overhead of initializing the GPU kernel. After initialization, we see stable performance at about 37.5 TFLOPS, showcasing the impressive computational capabilities of the AMD Instinct MI250X/MI250 GPU for large-scale matrix multiplication tasks.
+The stark difference between the first run and subsequent runs clearly demonstrates the overhead of initializing the GPU kernel. After initialization, we see stable performance at about 37.5 TFLOPS, showcasing the impressive computational capabilities of the AMD Instinct MI250X GPU for large-scale matrix multiplication tasks.
 
 This PyTorch implementation demonstrates how high-level frameworks can abstract away the complexities of GPU programming while still delivering excellent performance for computational tasks like matrix multiplication.
 
