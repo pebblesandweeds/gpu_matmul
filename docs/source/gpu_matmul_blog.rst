@@ -330,47 +330,83 @@ The C implementation provides a lower-level approach, directly integrating with 
 Matrix Setup
 ^^^^^^^^^^^^
 
+In the C implementation, we manually handle both the allocation of memory and the transfer of matrices between the host (CPU) and device (GPU). The following code shows how we allocate memory for the matrices and initialize them:
+
 .. code-block:: c
 
    size_t size = N * N * sizeof(float);
-   float *h_A, *h_B, *h_C, *h_A_trans, *h_B_trans, *h_C_trans;
+   float *h_A, *h_B, *h_C;
    float *d_A, *d_B, *d_C;
-   
+
    // Allocate host memory
    h_A = (float*)malloc(size);
    h_B = (float*)malloc(size);
    h_C = (float*)malloc(size);
-   
+
    // Initialize matrices
    initialize_matrices(h_A, h_B, N);
-   
+
    // Allocate device memory
    CHECK_HIP(hipMalloc(&d_A, size));
    CHECK_HIP(hipMalloc(&d_B, size));
    CHECK_HIP(hipMalloc(&d_C, size));
 
-This code allocates memory for matrices on both the host and device, and initializes the input matrices.
+   // Transfer data from host to device
+   CHECK_HIP(hipMemcpy(d_A, h_A, size, hipMemcpyHostToDevice));
+   CHECK_HIP(hipMemcpy(d_B, h_B, size, hipMemcpyHostToDevice));
+   CHECK_HIP(hipMemset(d_C, 0, size));
+
+Unlike in PyTorch, where tensors are created directly on the GPU, in this C implementation, matrices `A`, `B`, and `C` are first initialized in host memory. We then allocate memory on the GPU and explicitly transfer the data from the host to the device using `hipMemcpy`. This step ensures that the matrices are available in GPU memory (`d_A`, `d_B`, and `d_C`) for the matrix multiplication operation.
 
 Matrix Multiplication
 ^^^^^^^^^^^^^^^^^^^^^
+
+In this C implementation, the matrix multiplication is performed using the `rocblas_sgemm` function from the rocBLAS library. This function is the low-level equivalent of PyTorch's `torch.matmul`, handling the matrix multiplication on the GPU.
 
 .. code-block:: c
 
    rocblas_handle handle;
    CHECK_ROCBLAS(rocblas_create_handle(&handle));
+
+   // Perform matrix multiplication on the GPU
    perform_matrix_multiplication(handle, d_A, d_B, d_C, N, NUM_RUNS);
 
-The matrix multiplication is performed using rocBLAS's `rocblas_sgemm` function, which is called within the `perform_matrix_multiplication` function.
+The `rocblas_sgemm` function is called within the `perform_matrix_multiplication` function, which executes the matrix multiplication on the GPU. This is similar to how `torch.matmul` abstracts the operation in PyTorch, but in the C implementation, we have explicit control over the rocBLAS API, requiring us to manually manage the GPU context and resources.
+
+Once the matrix multiplication is complete, we can retrieve the result from device memory (`d_C`) and transfer it back to the host (`h_C`) if necessary for further processing or validation.
 
 FLOPS Calculation
 ^^^^^^^^^^^^^^^^^
 
+To calculate the FLOPS (Floating Point Operations per Second), we use the same formula as in the PyTorch implementation, based on the number of operations required for matrix multiplication: `2N³`, accounting for both multiplications and additions.
+
+Before measuring the runtime, we ensure that the GPU is synchronized so that the timing only includes the matrix multiplication, excluding any asynchronous overhead. Here's how we measure `run_time` accurately:
+
+.. code-block:: c
+
+   // Synchronize the GPU before starting the timer
+   hipDeviceSynchronize();
+   double start = get_time_in_seconds();
+
+   // Perform matrix multiplication
+   perform_matrix_multiplication(handle, d_A, d_B, d_C, N, NUM_RUNS);
+
+   // Synchronize the GPU again to ensure the multiplication has finished
+   hipDeviceSynchronize();
+   double end = get_time_in_seconds();
+
+   double run_time = end - start;
+
+We synchronize the GPU with `hipDeviceSynchronize()` before and after the multiplication to ensure that the timing accurately captures the computation itself, without interference from asynchronous operations.
+
+Finally, we calculate the TFLOPS (TeraFLOPS) as:
+
 .. code-block:: c
 
    double total_flops = 2.0 * N * N * N;
-   double tflops = total_flops / (seconds * 1e12);
+   double tflops = total_flops / (run_time * 1e12);
 
-Similar to the PyTorch implementation, we calculate FLOPS as 2N³, accounting for N³ multiplications and N³ additions.
+This calculates the number of floating-point operations per second, converting the result to TFLOPS by dividing the total FLOPS by the measured runtime and scaling by 10¹² to convert to tera operations.
 
 Benchmark Strategy
 ^^^^^^^^^^^^^^^^^^
@@ -400,22 +436,31 @@ The performance difference between the first and subsequent runs demonstrates th
 Accuracy Verification
 ^^^^^^^^^^^^^^^^^^^^^
 
-Unlike the PyTorch implementation, this C implementation includes a spot-checking mechanism to verify the accuracy of the GPU computations:
+In contrast to PyTorch, which abstracts many aspects of GPU computations and typically assumes correct results based on its built-in framework, the C implementation requires explicit verification of the accuracy of the results. PyTorch does not expose the underlying operations as directly, but due to the rigorous testing and use of highly optimized libraries like rocBLAS, it is generally trusted to produce accurate results without the need for manual spot checks. However, in our low-level C implementation, it's important to verify the results ourselves to ensure correctness.
+
+After completing the matrix multiplication on the GPU and transferring the result matrix `C` back to the host, we must **transpose the result matrix** before performing any accuracy checks. This is because `rocBLAS <https://rocm.docs.amd.com/projects/rocBLAS/en/docs-5.7.1/API_Reference_Guide.html#introduction>`_ returns the result in **column-major order**, while our matrix operations expect the data in **row-major order**, as is typical in C programs. Here’s how the verification process is handled:
 
 .. code-block:: c
 
+   // Transfer the result matrix C back from the GPU to the host
+   CHECK_HIP(hipMemcpy(h_C, d_C, size, hipMemcpyDeviceToHost));
+
+   // Transpose the result matrix from column-major to row-major order
+   transpose_matrix(h_C_trans, h_C, N);
+
+   // Perform spot-checking for accuracy
    spot_check(h_A, h_B, h_C_trans, N);
 
-This function performs random spot checks, comparing the GPU results with CPU-computed results to ensure accuracy within a specified threshold.
+The `spot_check` function performs random comparisons between the CPU-computed results and the transposed GPU results, verifying that they match within a specified **relative error threshold** of `1e-4`. This ensures that the GPU computations are accurate and consistent with the CPU calculations.
 
-The output confirms the accuracy:
+Example output confirms the accuracy:
 
 .. code-block:: text
 
    Performing random spot checks between CPU and GPU results...
    Success: All 50 spot checks passed within the relative error threshold.
 
-This C implementation with direct rocBLAS integration offers fine-grained control over the matrix multiplication process while achieving performance equivalent to the high-level PyTorch implementation. The addition of accuracy verification provides an extra layer of confidence in the results.
+This additional layer of verification provides confidence in the correctness of our C implementation, especially when working directly with GPU operations and memory management.
 
 Conclusion
 ----------
