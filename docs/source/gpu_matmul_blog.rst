@@ -465,18 +465,12 @@ This additional layer of verification provides confidence in the correctness of 
 Conclusion
 ----------
 
-Our exploration of GPU-accelerated matrix multiplication using AMD's rocBLAS library has demonstrated the impressive performance capabilities of modern GPUs. We achieved consistent performance of about 37.5 TFLOPS for a 16384x16384 matrix multiplication, showcasing the power of GPU acceleration for large-scale computational tasks.
+Our exploration of GPU-accelerated matrix multiplication using AMD’s rocBLAS library demonstrated the substantial performance improvements that modern GPUs can deliver. We consistently achieved around 37.5 TFLOPS for 16384x16384 matrix multiplication, emphasizing the efficiency of GPU acceleration for large-scale computations.
 
-Both our PyTorch and C implementations reached similar performance levels, highlighting that low-level C programming with rocBLAS can match the efficiency of high-level frameworks like PyTorch. This comparison underscores the value of understanding both high-level abstractions and low-level GPU programming concepts.
+Both the PyTorch and C implementations produced similar performance results. This confirms that while high-level frameworks like PyTorch simplify the process, low-level programming with rocBLAS offers comparable efficiency. The C implementation provided deeper control over memory management, data transfers, and kernel execution, allowing us to directly engage with GPU programming principles.
 
-The C implementation, while more complex, offers greater control and insight into the GPU computation process. It allowed us to directly manage memory allocation, data transfer, and rocBLAS function calls, providing a deeper understanding of GPU programming principles. The addition of accuracy verification through spot-checking adds an extra layer of confidence in our results.
+The complexity of the C implementation, while more involved, offered greater insight into the mechanics of GPU computation, such as explicit memory management and accuracy verification through spot-checking. These steps provided additional confidence in the correctness of our results, particularly when working at a lower level.
 
-This journey from CPU to GPU optimization showcases the significant performance gains possible with GPU acceleration. While our previous CPU optimizations achieved 3,000 GFLOPS, the GPU implementation reached 37,500 GFLOPS - a further 12.5x improvement. This leap in performance illustrates the transformative potential of GPU computing for matrix multiplication and, by extension, for deep learning and scientific computing applications.
+By moving from CPU to GPU optimization, we observed significant performance gains. Our previous CPU optimizations reached 3,000 GFLOPS, while the GPU implementation achieved 37,500 GFLOPS—a 12.5x improvement. This highlights the vast potential of GPU computing for matrix multiplication and similar computational tasks in fields such as deep learning and scientific computing.
 
 Thanks for reading! For more details, check out our `gpu_matmul GitHub repo <https://github.com/pebblesandweeds/gpu_matmul>`_. Stay tuned for future blogs where we'll dive deeper into GPU optimizations and explore more advanced topics in high-performance computing.
-
-Further Reading
----------------
-
-* `GEMM Optimization Tutorial <https://github.com/flame/how-to-optimize-gemm>`_ and `BLISlab Tutorial <https://github.com/flame/blislab/blob/master/tutorial.pdf>`_
-* `Beating NumPy in 150 lines of C Code <https://salykova.github.io/matmul-cpu>`_ plus the `repo <https://github.com/salykova/matmul.c>`_
